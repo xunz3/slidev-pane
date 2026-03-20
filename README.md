@@ -36,4 +36,5 @@ Press `p` to enter or leave the pane presenter mode.
 - This addon keeps Slidev's built-in `/presenter/:no` route unchanged.
 - The pane presenter lives at `/pane-presenter/:no`.
 - It keeps `o` for Slidev's quick overview instead of rebinding it.
-- The implementation depends on Slidev client internals and is pinned to `0.51.x`.
+- The implementation depends on Slidev client internals.
+- The package metadata now keeps a minimum Slidev version of `0.51.0-beta.4`, but no longer hard-pins a single `0.51.x` range.
