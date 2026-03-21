@@ -37,9 +37,10 @@ if (__SLIDEV_FEATURE_WAKE_LOCK__)
 
 const main = ref<HTMLDivElement>()
 const canvasSurface = ref<HTMLDivElement>()
+const canvasBounds = ref<HTMLDivElement>()
 const canvasViewport = ref<HTMLDivElement>()
 const thumbViewport = ref<HTMLElement>()
-const { width: canvasSurfaceWidth, height: canvasSurfaceHeight } = useElementSize(canvasSurface)
+const { width: canvasBoundsWidth, height: canvasBoundsHeight } = useElementSize(canvasBounds)
 
 useSwipeControls(main)
 
@@ -121,21 +122,21 @@ const visibleSlides = computed(() => {
 
 const totalThumbsHeight = computed(() => `${slides.value.length * thumbRowHeight}px`)
 const canvasFrameStyle = computed(() => {
-  if (!canvasSurfaceWidth.value || !canvasSurfaceHeight.value)
+  if (!canvasBoundsWidth.value || !canvasBoundsHeight.value)
     return {}
 
   return {
-    width: `${Math.max(canvasSurfaceWidth.value, canvasSurfaceWidth.value * slideZoom.value)}px`,
-    height: `${Math.max(canvasSurfaceHeight.value, canvasSurfaceHeight.value * slideZoom.value)}px`,
+    width: `${Math.max(canvasBoundsWidth.value, canvasBoundsWidth.value * slideZoom.value)}px`,
+    height: `${Math.max(canvasBoundsHeight.value, canvasBoundsHeight.value * slideZoom.value)}px`,
   }
 })
 const canvasStyle = computed(() => {
-  if (!canvasSurfaceWidth.value || !canvasSurfaceHeight.value)
+  if (!canvasBoundsWidth.value || !canvasBoundsHeight.value)
     return {}
 
   return {
-    width: `${canvasSurfaceWidth.value * slideZoom.value}px`,
-    height: `${canvasSurfaceHeight.value * slideZoom.value}px`,
+    width: `${canvasBoundsWidth.value * slideZoom.value}px`,
+    height: `${canvasBoundsHeight.value * slideZoom.value}px`,
     flex: '0 0 auto',
   }
 })
@@ -146,8 +147,8 @@ function clampBetween(value: number, min: number, max: number) {
 
 function getCanvasMetrics(zoom = slideZoom.value) {
   const viewport = canvasViewport.value
-  const baseWidth = canvasSurfaceWidth.value || viewport?.clientWidth || 0
-  const baseHeight = canvasSurfaceHeight.value || viewport?.clientHeight || 0
+  const baseWidth = canvasBoundsWidth.value || viewport?.clientWidth || 0
+  const baseHeight = canvasBoundsHeight.value || viewport?.clientHeight || 0
   const visibleWidth = viewport?.clientWidth || baseWidth
   const visibleHeight = viewport?.clientHeight || baseHeight
   const slideWidth = baseWidth * zoom
@@ -491,22 +492,27 @@ onBeforeUnmount(() => {
           class="sidebar-presenter__canvas-surface"
         >
           <div
-            ref="canvasViewport"
-            class="sidebar-presenter__canvas-viewport"
-            @wheel="handleCanvasWheel"
+            ref="canvasBounds"
+            class="sidebar-presenter__canvas-bounds"
           >
             <div
-              class="sidebar-presenter__canvas-stage"
-              :style="canvasFrameStyle"
+              ref="canvasViewport"
+              class="sidebar-presenter__canvas-viewport"
+              @wheel="handleCanvasWheel"
             >
-              <SlideContainer
-                class="sidebar-presenter__canvas"
-                :style="canvasStyle"
-                is-main
-                @contextmenu="onContextMenu"
+              <div
+                class="sidebar-presenter__canvas-stage"
+                :style="canvasFrameStyle"
               >
-                <SlidesShow render-context="presenter" />
-              </SlideContainer>
+                <SlideContainer
+                  class="sidebar-presenter__canvas"
+                  :style="canvasStyle"
+                  is-main
+                  @contextmenu="onContextMenu"
+                >
+                  <SlidesShow render-context="presenter" />
+                </SlideContainer>
+              </div>
             </div>
           </div>
         </div>
@@ -871,9 +877,15 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__canvas-surface {
+  position: relative;
+  height: 100%;
   min-height: 0;
+}
+
+.sidebar-presenter__canvas-bounds {
+  position: absolute;
+  inset: 1rem 1rem 0.4rem;
   overflow: hidden;
-  padding: 1rem 1rem 0.4rem;
 }
 
 .sidebar-presenter__canvas-viewport {

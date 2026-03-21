@@ -1,4 +1,3 @@
-import { clamp } from '@antfu/utils'
 import { CLICKS_MAX } from '@slidev/client/constants.ts'
 import { useNav } from '@slidev/client/composables/useNav.ts'
 import { getSlide } from '@slidev/client/logic/slides.ts'
@@ -7,6 +6,10 @@ import { useRoute, useRouter } from 'vue-router'
 
 export const SIDEBAR_PRESENTER_ROUTE_NAME = 'pane-presenter'
 export const SIDEBAR_PRESENTER_PATH = '/pane-presenter'
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
 
 export function isSidebarPresenterRouteName(name: unknown) {
   return name === SIDEBAR_PRESENTER_ROUTE_NAME
@@ -47,7 +50,7 @@ export function useSidebarPresenterNav() {
 
     const clicksStart = targetRoute.meta.slide?.frontmatter.clicksStart ?? 0
     const clicksTotal = nav.getPrimaryClicks(targetRoute).total
-    const nextClicks = clamp(clicks, clicksStart, clicksTotal || CLICKS_MAX)
+    const nextClicks = clampNumber(clicks, clicksStart, clicksTotal || CLICKS_MAX)
     const pageChanged = nav.currentSlideNo.value !== targetRoute.no
     const clicksChanged = nextClicks !== nav.clicks.value
 
