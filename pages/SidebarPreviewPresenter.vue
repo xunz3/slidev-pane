@@ -36,9 +36,10 @@ if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()
 
 const main = ref<HTMLDivElement>()
+const canvasSurface = ref<HTMLDivElement>()
 const canvasViewport = ref<HTMLDivElement>()
 const thumbViewport = ref<HTMLElement>()
-const { width: canvasViewportWidth, height: canvasViewportHeight } = useElementSize(canvasViewport)
+const { width: canvasSurfaceWidth, height: canvasSurfaceHeight } = useElementSize(canvasSurface)
 
 useSwipeControls(main)
 
@@ -120,21 +121,21 @@ const visibleSlides = computed(() => {
 
 const totalThumbsHeight = computed(() => `${slides.value.length * thumbRowHeight}px`)
 const canvasFrameStyle = computed(() => {
-  if (!canvasViewportWidth.value || !canvasViewportHeight.value)
+  if (!canvasSurfaceWidth.value || !canvasSurfaceHeight.value)
     return {}
 
   return {
-    width: `${Math.max(canvasViewportWidth.value, canvasViewportWidth.value * slideZoom.value)}px`,
-    height: `${Math.max(canvasViewportHeight.value, canvasViewportHeight.value * slideZoom.value)}px`,
+    width: `${Math.max(canvasSurfaceWidth.value, canvasSurfaceWidth.value * slideZoom.value)}px`,
+    height: `${Math.max(canvasSurfaceHeight.value, canvasSurfaceHeight.value * slideZoom.value)}px`,
   }
 })
 const canvasStyle = computed(() => {
-  if (!canvasViewportWidth.value || !canvasViewportHeight.value)
+  if (!canvasSurfaceWidth.value || !canvasSurfaceHeight.value)
     return {}
 
   return {
-    width: `${canvasViewportWidth.value * slideZoom.value}px`,
-    height: `${canvasViewportHeight.value * slideZoom.value}px`,
+    width: `${canvasSurfaceWidth.value * slideZoom.value}px`,
+    height: `${canvasSurfaceHeight.value * slideZoom.value}px`,
     flex: '0 0 auto',
   }
 })
@@ -145,23 +146,27 @@ function clampBetween(value: number, min: number, max: number) {
 
 function getCanvasMetrics(zoom = slideZoom.value) {
   const viewport = canvasViewport.value
-  const viewportWidth = viewport?.clientWidth || 0
-  const viewportHeight = viewport?.clientHeight || 0
-  const slideWidth = viewportWidth * zoom
-  const slideHeight = viewportHeight * zoom
-  const stageWidth = Math.max(viewportWidth, slideWidth)
-  const stageHeight = Math.max(viewportHeight, slideHeight)
+  const baseWidth = canvasSurfaceWidth.value || viewport?.clientWidth || 0
+  const baseHeight = canvasSurfaceHeight.value || viewport?.clientHeight || 0
+  const visibleWidth = viewport?.clientWidth || baseWidth
+  const visibleHeight = viewport?.clientHeight || baseHeight
+  const slideWidth = baseWidth * zoom
+  const slideHeight = baseHeight * zoom
+  const stageWidth = Math.max(visibleWidth, slideWidth)
+  const stageHeight = Math.max(visibleHeight, slideHeight)
 
   return {
+    baseHeight,
+    baseWidth,
     slideHeight,
     slideLeft: Math.max(0, (stageWidth - slideWidth) / 2),
     slideTop: Math.max(0, (stageHeight - slideHeight) / 2),
     slideWidth,
     stageHeight,
     stageWidth,
+    visibleHeight,
+    visibleWidth,
     viewport,
-    viewportHeight,
-    viewportWidth,
   }
 }
 
@@ -173,30 +178,30 @@ function focusCanvasZoom(nextZoom: number, offsetX?: number, offsetY?: number) {
   const previous = getCanvasMetrics(previousZoom)
   const viewport = previous.viewport
 
-  if (!viewport || !previous.viewportWidth || !previous.viewportHeight) {
+  if (!viewport || !previous.baseWidth || !previous.baseHeight || !previous.visibleWidth || !previous.visibleHeight) {
     setSlideZoom(nextZoom)
     return
   }
 
-  const anchorX = offsetX ?? previous.viewportWidth / 2
-  const anchorY = offsetY ?? previous.viewportHeight / 2
+  const anchorX = offsetX ?? previous.visibleWidth / 2
+  const anchorY = offsetY ?? previous.visibleHeight / 2
   const slideX = clampBetween(
     (viewport.scrollLeft + anchorX - previous.slideLeft) / previousZoom,
     0,
-    previous.viewportWidth,
+    previous.baseWidth,
   )
   const slideY = clampBetween(
     (viewport.scrollTop + anchorY - previous.slideTop) / previousZoom,
     0,
-    previous.viewportHeight,
+    previous.baseHeight,
   )
 
   setSlideZoom(nextZoom)
 
   nextTick(() => {
     const next = getCanvasMetrics(slideZoom.value)
-    const maxScrollLeft = Math.max(0, next.stageWidth - next.viewportWidth)
-    const maxScrollTop = Math.max(0, next.stageHeight - next.viewportHeight)
+    const maxScrollLeft = Math.max(0, next.stageWidth - next.visibleWidth)
+    const maxScrollTop = Math.max(0, next.stageHeight - next.visibleHeight)
 
     viewport.scrollLeft = clampBetween(
       slideX * slideZoom.value + next.slideLeft - anchorX,
@@ -482,22 +487,27 @@ onBeforeUnmount(() => {
 
       <section class="sidebar-presenter__canvas-wrap">
         <div
-          ref="canvasViewport"
-          class="sidebar-presenter__canvas-viewport"
-          @wheel="handleCanvasWheel"
+          ref="canvasSurface"
+          class="sidebar-presenter__canvas-surface"
         >
           <div
-            class="sidebar-presenter__canvas-stage"
-            :style="canvasFrameStyle"
+            ref="canvasViewport"
+            class="sidebar-presenter__canvas-viewport"
+            @wheel="handleCanvasWheel"
           >
-            <SlideContainer
-              class="sidebar-presenter__canvas"
-              :style="canvasStyle"
-              is-main
-              @contextmenu="onContextMenu"
+            <div
+              class="sidebar-presenter__canvas-stage"
+              :style="canvasFrameStyle"
             >
-              <SlidesShow render-context="presenter" />
-            </SlideContainer>
+              <SlideContainer
+                class="sidebar-presenter__canvas"
+                :style="canvasStyle"
+                is-main
+                @contextmenu="onContextMenu"
+              >
+                <SlidesShow render-context="presenter" />
+              </SlideContainer>
+            </div>
           </div>
         </div>
 
@@ -860,11 +870,18 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.sidebar-presenter__canvas-surface {
+  min-height: 0;
+  overflow: hidden;
+  padding: 1rem 1rem 0.4rem;
+}
+
 .sidebar-presenter__canvas-viewport {
+  width: 100%;
+  height: 100%;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 1rem 1rem 0.4rem;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
