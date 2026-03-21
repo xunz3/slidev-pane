@@ -7,6 +7,7 @@ PowerPoint-style pane presenter for Slidev.
 - Adds a dedicated `/pane-presenter/:no` page with a two-pane layout.
 - Left side shows slide thumbnails.
 - Right side shows the active slide.
+- Lets you zoom the active slide with on-screen controls or `Ctrl/⌘ + mouse wheel`.
 - Keeps Slidev's built-in presenter mode intact.
 - Adds a `Pane` entry to Slidev's standard nav controls.
 - Adds a `p` shortcut to toggle this presenter mode.
@@ -30,6 +31,7 @@ Then add it to the deck's `package.json`:
 ```
 
 Press `p` to enter or leave the pane presenter mode.
+Use the zoom controls in the header, or hold `Ctrl`/`⌘` and scroll on the slide to resize the active slide area.
 
 ## Notes
 

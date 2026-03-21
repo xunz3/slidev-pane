@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useElementSize } from '@vueuse/core'
 import { useHead } from '@unhead/vue'
 import { useWakeLock } from '@slidev/client/composables/useWakeLock.ts'
 import { createFixedClicks } from '@slidev/client/composables/useClicks.ts'
@@ -23,6 +24,11 @@ import SidebarGoto from '../components/SidebarGoto.vue'
 import SidebarNavControls from '../components/SidebarNavControls.vue'
 import SidebarQuickOverview from '../components/SidebarQuickOverview.vue'
 import { useSidebarPresenterNav } from '../composables/useSidebarPresenterNav'
+import {
+  SIDEBAR_PRESENTER_DEFAULT_ZOOM,
+  SIDEBAR_PRESENTER_ZOOM_STEP,
+  useSidebarPresenterZoom,
+} from '../composables/useSidebarPresenterZoom'
 
 registerShortcuts()
 
@@ -30,7 +36,9 @@ if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()
 
 const main = ref<HTMLDivElement>()
+const canvasViewport = ref<HTMLDivElement>()
 const thumbViewport = ref<HTMLElement>()
+const { width: canvasViewportWidth, height: canvasViewportHeight } = useElementSize(canvasViewport)
 
 useSwipeControls(main)
 
@@ -47,6 +55,14 @@ const {
   exitSidebarPresenter,
   goSidebar,
 } = useSidebarPresenterNav()
+const {
+  canZoomIn,
+  canZoomOut,
+  getWheelZoomTarget,
+  setSlideZoom,
+  slideZoom,
+  zoomPercentage,
+} = useSidebarPresenterZoom()
 
 useHead({ title: `Pane Presenter - ${slidesTitle}` })
 
@@ -103,6 +119,127 @@ const visibleSlides = computed(() => {
 })
 
 const totalThumbsHeight = computed(() => `${slides.value.length * thumbRowHeight}px`)
+const canvasFrameStyle = computed(() => {
+  if (!canvasViewportWidth.value || !canvasViewportHeight.value)
+    return {}
+
+  return {
+    width: `${Math.max(canvasViewportWidth.value, canvasViewportWidth.value * slideZoom.value)}px`,
+    height: `${Math.max(canvasViewportHeight.value, canvasViewportHeight.value * slideZoom.value)}px`,
+  }
+})
+const canvasStyle = computed(() => {
+  if (!canvasViewportWidth.value || !canvasViewportHeight.value)
+    return {}
+
+  return {
+    width: `${canvasViewportWidth.value * slideZoom.value}px`,
+    height: `${canvasViewportHeight.value * slideZoom.value}px`,
+    flex: '0 0 auto',
+  }
+})
+
+function clampBetween(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function getCanvasMetrics(zoom = slideZoom.value) {
+  const viewport = canvasViewport.value
+  const viewportWidth = viewport?.clientWidth || 0
+  const viewportHeight = viewport?.clientHeight || 0
+  const slideWidth = viewportWidth * zoom
+  const slideHeight = viewportHeight * zoom
+  const stageWidth = Math.max(viewportWidth, slideWidth)
+  const stageHeight = Math.max(viewportHeight, slideHeight)
+
+  return {
+    slideHeight,
+    slideLeft: Math.max(0, (stageWidth - slideWidth) / 2),
+    slideTop: Math.max(0, (stageHeight - slideHeight) / 2),
+    slideWidth,
+    stageHeight,
+    stageWidth,
+    viewport,
+    viewportHeight,
+    viewportWidth,
+  }
+}
+
+function focusCanvasZoom(nextZoom: number, offsetX?: number, offsetY?: number) {
+  const previousZoom = slideZoom.value
+  if (nextZoom === previousZoom)
+    return
+
+  const previous = getCanvasMetrics(previousZoom)
+  const viewport = previous.viewport
+
+  if (!viewport || !previous.viewportWidth || !previous.viewportHeight) {
+    setSlideZoom(nextZoom)
+    return
+  }
+
+  const anchorX = offsetX ?? previous.viewportWidth / 2
+  const anchorY = offsetY ?? previous.viewportHeight / 2
+  const slideX = clampBetween(
+    (viewport.scrollLeft + anchorX - previous.slideLeft) / previousZoom,
+    0,
+    previous.viewportWidth,
+  )
+  const slideY = clampBetween(
+    (viewport.scrollTop + anchorY - previous.slideTop) / previousZoom,
+    0,
+    previous.viewportHeight,
+  )
+
+  setSlideZoom(nextZoom)
+
+  nextTick(() => {
+    const next = getCanvasMetrics(slideZoom.value)
+    const maxScrollLeft = Math.max(0, next.stageWidth - next.viewportWidth)
+    const maxScrollTop = Math.max(0, next.stageHeight - next.viewportHeight)
+
+    viewport.scrollLeft = clampBetween(
+      slideX * slideZoom.value + next.slideLeft - anchorX,
+      0,
+      maxScrollLeft,
+    )
+    viewport.scrollTop = clampBetween(
+      slideY * slideZoom.value + next.slideTop - anchorY,
+      0,
+      maxScrollTop,
+    )
+  })
+}
+
+function zoomCanvasIn() {
+  focusCanvasZoom(slideZoom.value + SIDEBAR_PRESENTER_ZOOM_STEP)
+}
+
+function zoomCanvasOut() {
+  focusCanvasZoom(slideZoom.value - SIDEBAR_PRESENTER_ZOOM_STEP)
+}
+
+function resetCanvasZoom() {
+  focusCanvasZoom(SIDEBAR_PRESENTER_DEFAULT_ZOOM)
+}
+
+function handleCanvasWheel(event: WheelEvent) {
+  if (!event.ctrlKey && !event.metaKey)
+    return
+
+  event.preventDefault()
+
+  const viewport = canvasViewport.value
+  if (!viewport)
+    return
+
+  const bounds = viewport.getBoundingClientRect()
+  focusCanvasZoom(
+    getWheelZoomTarget(event.deltaY),
+    event.clientX - bounds.left,
+    event.clientY - bounds.top,
+  )
+}
 
 function restoreCursor() {
   document.body.style.cursor = ''
@@ -301,6 +438,38 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="sidebar-presenter__main-actions">
+          <div
+            class="sidebar-presenter__zoom"
+            title="Ctrl/⌘ + wheel on the slide to zoom"
+          >
+            <button
+              type="button"
+              class="sidebar-presenter__zoom-button"
+              title="Zoom out"
+              :disabled="!canZoomOut"
+              @click="zoomCanvasOut"
+            >
+              -
+            </button>
+            <button
+              type="button"
+              class="sidebar-presenter__zoom-button sidebar-presenter__zoom-button--readout"
+              title="Reset zoom"
+              @click="resetCanvasZoom"
+            >
+              {{ zoomPercentage }}
+            </button>
+            <button
+              type="button"
+              class="sidebar-presenter__zoom-button"
+              title="Zoom in"
+              :disabled="!canZoomIn"
+              @click="zoomCanvasIn"
+            >
+              +
+            </button>
+          </div>
+
           <button
             type="button"
             class="sidebar-presenter__toggle sidebar-presenter__toggle--soft sidebar-presenter__toggle--compact"
@@ -312,13 +481,25 @@ onBeforeUnmount(() => {
       </header>
 
       <section class="sidebar-presenter__canvas-wrap">
-        <SlideContainer
-          class="sidebar-presenter__canvas"
-          is-main
-          @contextmenu="onContextMenu"
+        <div
+          ref="canvasViewport"
+          class="sidebar-presenter__canvas-viewport"
+          @wheel="handleCanvasWheel"
         >
-          <SlidesShow render-context="presenter" />
-        </SlideContainer>
+          <div
+            class="sidebar-presenter__canvas-stage"
+            :style="canvasFrameStyle"
+          >
+            <SlideContainer
+              class="sidebar-presenter__canvas"
+              :style="canvasStyle"
+              is-main
+              @contextmenu="onContextMenu"
+            >
+              <SlidesShow render-context="presenter" />
+            </SlideContainer>
+          </div>
+        </div>
 
         <ClicksSlider
           :key="currentSlideRoute?.no"
@@ -621,7 +802,51 @@ onBeforeUnmount(() => {
 .sidebar-presenter__main-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.sidebar-presenter__zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.24rem;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 999px;
+  background: var(--sidebar-soft-button-bg);
+}
+
+.sidebar-presenter__zoom-button {
+  min-width: 2rem;
+  height: 2rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sidebar-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
+}
+
+.sidebar-presenter__zoom-button:hover {
+  transform: translateY(-1px);
+  background: var(--sidebar-thumb-hover);
+}
+
+.sidebar-presenter__zoom-button:disabled {
+  opacity: 0.38;
+  transform: none;
+}
+
+.sidebar-presenter__zoom-button--readout {
+  min-width: 4.4rem;
+  padding: 0 0.7rem;
+  border-color: var(--sidebar-border);
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-presenter__canvas-wrap {
@@ -635,9 +860,24 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.sidebar-presenter__canvas {
+.sidebar-presenter__canvas-viewport {
   min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 1rem 1rem 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
+}
+
+.sidebar-presenter__canvas-stage {
+  display: flex;
+  min-width: 100%;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-presenter__canvas {
   cursor: auto;
 }
 
@@ -687,18 +927,21 @@ onBeforeUnmount(() => {
   height: 10px;
 }
 
+.sidebar-presenter__canvas-viewport::-webkit-scrollbar,
 .sidebar-presenter__notes-display::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-track,
+.sidebar-presenter__canvas-viewport::-webkit-scrollbar-track,
 .sidebar-presenter__notes-display::-webkit-scrollbar-track {
   background: var(--sidebar-scrollbar-track);
   border-radius: 999px;
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-thumb,
+.sidebar-presenter__canvas-viewport::-webkit-scrollbar-thumb,
 .sidebar-presenter__notes-display::-webkit-scrollbar-thumb {
   border: 1.5px solid transparent;
   border-radius: 999px;
@@ -708,6 +951,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-thumb:hover,
+.sidebar-presenter__canvas-viewport::-webkit-scrollbar-thumb:hover,
 .sidebar-presenter__notes-display::-webkit-scrollbar-thumb:hover {
   background: var(--sidebar-scrollbar-thumb-hover);
   background-clip: padding-box;
@@ -772,6 +1016,11 @@ onBeforeUnmount(() => {
   .sidebar-presenter__main-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .sidebar-presenter__zoom {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
