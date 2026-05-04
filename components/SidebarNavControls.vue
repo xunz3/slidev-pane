@@ -156,11 +156,11 @@ const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : ''
 
 <style scoped>
 .pane-nav {
-  --pane-nav-border: rgba(15, 23, 42, 0.08);
-  --pane-nav-bg: rgba(250, 250, 250, 0.76);
-  --pane-nav-hover: rgba(15, 23, 42, 0.06);
-  --pane-nav-ink: rgba(15, 23, 42, 0.78);
-  --pane-nav-counter: rgba(15, 23, 42, 0.68);
+  --pane-nav-border: rgba(17, 17, 17, 0.08);
+  --pane-nav-bg: rgba(255, 255, 255, 0.78);
+  --pane-nav-hover: rgba(17, 17, 17, 0.05);
+  --pane-nav-ink: rgba(17, 17, 17, 0.82);
+  --pane-nav-counter: rgba(17, 17, 17, 0.62);
   display: flex;
   flex-wrap: wrap-reverse;
   align-items: center;
@@ -169,7 +169,7 @@ const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : ''
   border-radius: 999px;
   border: 1px solid var(--pane-nav-border);
   background: var(--pane-nav-bg);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 14px 32px rgba(17, 17, 17, 0.12);
   backdrop-filter: blur(18px);
   color: var(--pane-nav-ink);
 }
@@ -220,11 +220,11 @@ const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : ''
 }
 
 :global(html.dark) .pane-nav {
-  --pane-nav-border: rgba(226, 232, 240, 0.08);
-  --pane-nav-bg: rgba(17, 24, 31, 0.76);
+  --pane-nav-border: rgba(255, 255, 255, 0.08);
+  --pane-nav-bg: rgba(20, 20, 21, 0.78);
   --pane-nav-hover: rgba(255, 255, 255, 0.08);
-  --pane-nav-ink: rgba(226, 232, 240, 0.86);
-  --pane-nav-counter: rgba(226, 232, 240, 0.72);
+  --pane-nav-ink: rgba(245, 245, 245, 0.88);
+  --pane-nav-counter: rgba(245, 245, 245, 0.68);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
 }
 </style>

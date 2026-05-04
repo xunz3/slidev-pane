@@ -28,7 +28,12 @@ const fuse = computed(() => new Fuse(slides.value.map(i => i.meta?.slide).filter
 }))
 
 const path = computed(() => text.value.startsWith('/') ? text.value.substring(1) : text.value)
-const result = computed(() => fuse.value.search(path.value).map(result => result.item))
+const hasQuery = computed(() => path.value.trim().length > 0)
+const result = computed(() => {
+  if (!hasQuery.value)
+    return []
+  return fuse.value.search(path.value).map(result => result.item)
+})
 const valid = computed(() => !!result.value.length)
 
 function close() {

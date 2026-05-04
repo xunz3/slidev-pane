@@ -53,8 +53,6 @@ const {
   total,
 } = useNav()
 const {
-  enterClassicPresenter,
-  exitSidebarPresenter,
   goSidebar,
 } = useSidebarPresenterNav()
 const {
@@ -66,7 +64,7 @@ const {
   zoomPercentage,
 } = useSidebarPresenterZoom()
 
-useHead({ title: `Pane Presenter - ${slidesTitle}` })
+useHead({ title: slidesTitle })
 
 const thumbWidth = 208
 const thumbRowHeight = 180
@@ -330,21 +328,9 @@ onBeforeUnmount(() => {
   <div class="sidebar-presenter" :class="{ 'is-dark': isDark }">
     <aside class="sidebar-presenter__rail">
       <div class="sidebar-presenter__rail-head">
-        <div>
-          <p class="sidebar-presenter__eyebrow">
-            Pane Presenter
-          </p>
-          <h1 class="sidebar-presenter__heading">
-            {{ slidesTitle }}
-          </h1>
-        </div>
-        <button
-          type="button"
-          class="sidebar-presenter__toggle"
-          @click="exitSidebarPresenter"
-        >
-          Exit
-        </button>
+        <h1 class="sidebar-presenter__heading">
+          {{ slidesTitle }}
+        </h1>
       </div>
 
       <div
@@ -430,9 +416,6 @@ onBeforeUnmount(() => {
     <main ref="main" class="sidebar-presenter__main">
       <header class="sidebar-presenter__main-head">
         <div class="sidebar-presenter__main-copy">
-          <p class="sidebar-presenter__eyebrow">
-            Current Slide
-          </p>
           <div class="sidebar-presenter__title-row">
             <h2 class="sidebar-presenter__title">
               {{ currentTitle }}
@@ -475,14 +458,6 @@ onBeforeUnmount(() => {
               +
             </button>
           </div>
-
-          <button
-            type="button"
-            class="sidebar-presenter__toggle sidebar-presenter__toggle--soft sidebar-presenter__toggle--compact"
-            @click="enterClassicPresenter"
-          >
-            Classic Presenter
-          </button>
         </div>
       </header>
 
@@ -575,58 +550,54 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sidebar-presenter {
-  --sidebar-surface: rgba(250, 248, 243, 0.92);
-  --sidebar-surface-strong: rgba(255, 255, 255, 0.96);
-  --sidebar-border: rgba(27, 31, 35, 0.08);
-  --sidebar-border-strong: rgba(27, 31, 35, 0.18);
-  --sidebar-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
-  --sidebar-ink: #18212a;
-  --sidebar-ink-soft: rgba(24, 33, 42, 0.66);
-  --sidebar-accent: #23525a;
-  --sidebar-rail-bg: rgba(246, 242, 235, 0.9);
-  --sidebar-soft-button-bg: rgba(255, 255, 255, 0.72);
-  --sidebar-thumb-hover: rgba(255, 255, 255, 0.5);
-  --sidebar-thumb-frame-bg: #fff;
-  --sidebar-notes-bg: rgba(255, 255, 255, 0.66);
-  --sidebar-notes-display-bg: rgba(255, 255, 255, 0.56);
-  --sidebar-progress-track: rgba(24, 33, 42, 0.08);
-  --sidebar-progress-fill: linear-gradient(90deg, #23525a, #4b7a83);
-  --sidebar-scrollbar-track: rgba(24, 33, 42, 0.06);
-  --sidebar-scrollbar-thumb: rgba(35, 82, 90, 0.28);
-  --sidebar-scrollbar-thumb-hover: rgba(35, 82, 90, 0.42);
+  --sidebar-surface: rgba(255, 255, 255, 0.92);
+  --sidebar-surface-strong: rgba(255, 255, 255, 0.98);
+  --sidebar-border: rgba(17, 17, 17, 0.08);
+  --sidebar-border-strong: rgba(17, 17, 17, 0.16);
+  --sidebar-shadow: 0 18px 40px rgba(17, 17, 17, 0.08);
+  --sidebar-ink: #111111;
+  --sidebar-ink-soft: rgba(17, 17, 17, 0.58);
+  --sidebar-accent: #111111;
+  --sidebar-rail-bg: rgba(250, 250, 250, 0.92);
+  --sidebar-soft-button-bg: rgba(245, 245, 245, 0.92);
+  --sidebar-thumb-hover: rgba(17, 17, 17, 0.035);
+  --sidebar-thumb-frame-bg: #ffffff;
+  --sidebar-notes-bg: rgba(250, 250, 250, 0.92);
+  --sidebar-notes-display-bg: rgba(255, 255, 255, 0.82);
+  --sidebar-progress-track: rgba(17, 17, 17, 0.08);
+  --sidebar-progress-fill: linear-gradient(90deg, #111111, #3a3a3a);
+  --sidebar-scrollbar-track: rgba(17, 17, 17, 0.05);
+  --sidebar-scrollbar-thumb: rgba(17, 17, 17, 0.18);
+  --sidebar-scrollbar-thumb-hover: rgba(17, 17, 17, 0.28);
   --sidebar-thumb-row-height: 180px;
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
   height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(35, 82, 90, 0.08), transparent 24%),
-    linear-gradient(180deg, #f4f1eb 0%, #ece7de 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f6f7 100%);
   color: var(--sidebar-ink);
 }
 
 .sidebar-presenter.is-dark {
-  --sidebar-surface: rgba(19, 25, 31, 0.9);
-  --sidebar-surface-strong: rgba(28, 36, 44, 0.96);
-  --sidebar-border: rgba(233, 239, 244, 0.08);
-  --sidebar-border-strong: rgba(233, 239, 244, 0.18);
-  --sidebar-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-  --sidebar-ink: #eef3f7;
-  --sidebar-ink-soft: rgba(238, 243, 247, 0.66);
-  --sidebar-accent: #4f8e98;
-  --sidebar-rail-bg: rgba(16, 22, 28, 0.88);
-  --sidebar-soft-button-bg: rgba(31, 39, 47, 0.78);
-  --sidebar-thumb-hover: rgba(255, 255, 255, 0.06);
-  --sidebar-thumb-frame-bg: rgba(10, 14, 18, 0.9);
-  --sidebar-notes-bg: rgba(22, 29, 36, 0.82);
-  --sidebar-notes-display-bg: rgba(14, 19, 24, 0.72);
-  --sidebar-progress-track: rgba(238, 243, 247, 0.12);
-  --sidebar-progress-fill: linear-gradient(90deg, #4f8e98, #7db5bf);
-  --sidebar-scrollbar-track: rgba(238, 243, 247, 0.05);
-  --sidebar-scrollbar-thumb: rgba(125, 181, 191, 0.28);
-  --sidebar-scrollbar-thumb-hover: rgba(125, 181, 191, 0.46);
-  background:
-    radial-gradient(circle at top left, rgba(79, 142, 152, 0.18), transparent 26%),
-    linear-gradient(180deg, #0f1419 0%, #141b22 100%);
+  --sidebar-surface: rgba(20, 20, 21, 0.94);
+  --sidebar-surface-strong: rgba(28, 28, 30, 0.98);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-border-strong: rgba(255, 255, 255, 0.16);
+  --sidebar-shadow: 0 24px 56px rgba(0, 0, 0, 0.32);
+  --sidebar-ink: #f5f5f5;
+  --sidebar-ink-soft: rgba(245, 245, 245, 0.6);
+  --sidebar-accent: #f5f5f5;
+  --sidebar-rail-bg: rgba(16, 16, 17, 0.94);
+  --sidebar-soft-button-bg: rgba(34, 34, 36, 0.92);
+  --sidebar-thumb-hover: rgba(255, 255, 255, 0.05);
+  --sidebar-thumb-frame-bg: rgba(10, 10, 11, 0.92);
+  --sidebar-notes-bg: rgba(20, 20, 21, 0.94);
+  --sidebar-notes-display-bg: rgba(14, 14, 15, 0.84);
+  --sidebar-progress-track: rgba(255, 255, 255, 0.12);
+  --sidebar-progress-fill: linear-gradient(90deg, #f5f5f5, #8d8d93);
+  --sidebar-scrollbar-track: rgba(255, 255, 255, 0.05);
+  --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --sidebar-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, #0d0d0e 0%, #141416 100%);
 }
 
 .sidebar-presenter__rail {
@@ -676,7 +647,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--sidebar-border);
   border-radius: 999px;
   background: var(--sidebar-accent);
-  color: #f8f5ef;
+  color: #ffffff;
   padding: 0.55rem 0.95rem;
   font-size: 0.85rem;
   transition:
