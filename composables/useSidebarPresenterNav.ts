@@ -4,8 +4,8 @@ import { getSlide } from '@slidev/client/logic/slides.ts'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-export const SIDEBAR_PRESENTER_ROUTE_NAME = 'pane-presenter'
-export const SIDEBAR_PRESENTER_PATH = '/pane-presenter'
+export const SIDEBAR_PRESENTER_ROUTE_NAME = 'pane-view'
+export const SIDEBAR_PRESENTER_PATH = '/pane-view'
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)

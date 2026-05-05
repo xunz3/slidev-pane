@@ -56,12 +56,9 @@ const {
   goSidebar,
 } = useSidebarPresenterNav()
 const {
-  canZoomIn,
-  canZoomOut,
   getWheelZoomTarget,
   setSlideZoom,
   slideZoom,
-  zoomPercentage,
 } = useSidebarPresenterZoom()
 
 useHead({ title: slidesTitle })
@@ -73,6 +70,7 @@ const thumbScrollTop = ref(0)
 const thumbViewportHeight = ref(0)
 const isCompactLayout = ref(false)
 const notesEditing = ref(false)
+const notesCollapsed = ref(false)
 const thumbnailClicks = new WeakMap<object, ReturnType<typeof createFixedClicks>>()
 let thumbViewportObserver: ResizeObserver | undefined
 let compactLayoutMedia: MediaQueryList | undefined
@@ -85,8 +83,6 @@ function getThumbnailClicks(route: (typeof slides.value)[number]) {
   ctx.current = route.no === currentSlideNo.value ? clicksContext.value.current : CLICKS_MAX
   return ctx
 }
-
-const currentTitle = computed(() => currentSlideRoute.value?.meta?.slide?.title || `Slide ${currentSlideNo.value}`)
 
 const progressWidth = computed(() => {
   if (total.value <= 1)
@@ -215,16 +211,10 @@ function focusCanvasZoom(nextZoom: number, offsetX?: number, offsetY?: number) {
   })
 }
 
-function zoomCanvasIn() {
-  focusCanvasZoom(slideZoom.value + SIDEBAR_PRESENTER_ZOOM_STEP)
-}
-
-function zoomCanvasOut() {
-  focusCanvasZoom(slideZoom.value - SIDEBAR_PRESENTER_ZOOM_STEP)
-}
-
-function resetCanvasZoom() {
-  focusCanvasZoom(SIDEBAR_PRESENTER_DEFAULT_ZOOM)
+function toggleNotesCollapsed() {
+  notesCollapsed.value = !notesCollapsed.value
+  if (notesCollapsed.value)
+    notesEditing.value = false
 }
 
 function handleCanvasWheel(event: WheelEvent) {
@@ -414,53 +404,6 @@ onBeforeUnmount(() => {
     </aside>
 
     <main ref="main" class="sidebar-presenter__main">
-      <header class="sidebar-presenter__main-head">
-        <div class="sidebar-presenter__main-copy">
-          <div class="sidebar-presenter__title-row">
-            <h2 class="sidebar-presenter__title">
-              {{ currentTitle }}
-            </h2>
-            <span class="sidebar-presenter__count">
-              {{ currentSlideNo }} / {{ total }}
-            </span>
-          </div>
-        </div>
-
-        <div class="sidebar-presenter__main-actions">
-          <div
-            class="sidebar-presenter__zoom"
-            title="Ctrl/⌘ + wheel on the slide to zoom"
-          >
-            <button
-              type="button"
-              class="sidebar-presenter__zoom-button"
-              title="Zoom out"
-              :disabled="!canZoomOut"
-              @click="zoomCanvasOut"
-            >
-              -
-            </button>
-            <button
-              type="button"
-              class="sidebar-presenter__zoom-button sidebar-presenter__zoom-button--readout"
-              title="Reset zoom"
-              @click="resetCanvasZoom"
-            >
-              {{ zoomPercentage }}
-            </button>
-            <button
-              type="button"
-              class="sidebar-presenter__zoom-button"
-              title="Zoom in"
-              :disabled="!canZoomIn"
-              @click="zoomCanvasIn"
-            >
-              +
-            </button>
-          </div>
-        </div>
-      </header>
-
       <section class="sidebar-presenter__canvas-wrap">
         <div
           ref="canvasSurface"
@@ -499,14 +442,24 @@ onBeforeUnmount(() => {
         />
       </section>
 
-      <section class="sidebar-presenter__notes">
+      <section class="sidebar-presenter__notes" :class="{ 'is-collapsed': notesCollapsed }">
         <div class="sidebar-presenter__notes-head">
           <p class="sidebar-presenter__eyebrow">
             Notes
           </p>
           <div class="sidebar-presenter__notes-actions">
             <button
-              v-if="__DEV__"
+              type="button"
+              class="sidebar-presenter__notes-toggle"
+              :title="notesCollapsed ? 'Expand notes' : 'Collapse notes'"
+              :aria-label="notesCollapsed ? 'Expand notes' : 'Collapse notes'"
+              :aria-pressed="!notesCollapsed"
+              @click="toggleNotesCollapsed"
+            >
+              <div :class="notesCollapsed ? 'i-carbon:chevron-up' : 'i-carbon:chevron-down'" />
+            </button>
+            <button
+              v-if="__DEV__ && !notesCollapsed"
               type="button"
               class="sidebar-presenter__toggle sidebar-presenter__toggle--soft sidebar-presenter__toggle--compact"
               :aria-pressed="notesEditing"
@@ -516,7 +469,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        <div class="sidebar-presenter__notes-body">
+        <div v-show="!notesCollapsed" class="sidebar-presenter__notes-body">
           <NoteEditable
             v-if="__DEV__"
             :key="`edit-${currentSlideNo}`"
@@ -552,6 +505,7 @@ onBeforeUnmount(() => {
 .sidebar-presenter {
   --sidebar-surface: rgba(255, 255, 255, 0.92);
   --sidebar-surface-strong: rgba(255, 255, 255, 0.98);
+  --sidebar-head-bg: rgba(255, 255, 255, 0.66);
   --sidebar-border: rgba(17, 17, 17, 0.08);
   --sidebar-border-strong: rgba(17, 17, 17, 0.16);
   --sidebar-shadow: 0 18px 40px rgba(17, 17, 17, 0.08);
@@ -580,6 +534,7 @@ onBeforeUnmount(() => {
 .sidebar-presenter.is-dark {
   --sidebar-surface: rgba(20, 20, 21, 0.94);
   --sidebar-surface-strong: rgba(28, 28, 30, 0.98);
+  --sidebar-head-bg: rgba(20, 20, 21, 0.74);
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-border-strong: rgba(255, 255, 255, 0.16);
   --sidebar-shadow: 0 24px 56px rgba(0, 0, 0, 0.32);
@@ -615,11 +570,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.8rem;
 }
 
 .sidebar-presenter__rail-head {
-  padding: 1.2rem 1rem 1rem;
+  padding: 0.85rem 0.95rem 0.8rem;
   border-bottom: 1px solid var(--sidebar-border);
 }
 
@@ -633,13 +588,13 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__heading,
 .sidebar-presenter__title {
-  margin: 0.3rem 0 0;
+  margin: 0;
   line-height: 1;
   letter-spacing: -0.03em;
 }
 
 .sidebar-presenter__heading {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
@@ -747,93 +702,10 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__main {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
-  padding: 1.2rem 1.35rem 0;
-  gap: 1rem;
-}
-
-.sidebar-presenter__main-head {
-  border: 1px solid var(--sidebar-border);
-  border-radius: 22px;
-  background: var(--sidebar-surface);
-  box-shadow: var(--sidebar-shadow);
-  padding: 0.82rem 0.95rem;
-  backdrop-filter: blur(18px);
-}
-
-.sidebar-presenter__main-copy {
-  min-width: 0;
-}
-
-.sidebar-presenter__title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin-top: 0.08rem;
-}
-
-.sidebar-presenter__title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1.22rem;
-  font-weight: 600;
-}
-
-.sidebar-presenter__count {
-  font-size: 0.78rem;
-  color: var(--sidebar-ink-soft);
-}
-
-.sidebar-presenter__main-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  padding: 0.5rem 0.82rem 0;
   gap: 0.5rem;
-}
-
-.sidebar-presenter__zoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.24rem;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 999px;
-  background: var(--sidebar-soft-button-bg);
-}
-
-.sidebar-presenter__zoom-button {
-  min-width: 2rem;
-  height: 2rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--sidebar-ink);
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition:
-    transform 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease,
-    opacity 150ms ease;
-}
-
-.sidebar-presenter__zoom-button:hover {
-  transform: translateY(-1px);
-  background: var(--sidebar-thumb-hover);
-}
-
-.sidebar-presenter__zoom-button:disabled {
-  opacity: 0.38;
-  transform: none;
-}
-
-.sidebar-presenter__zoom-button--readout {
-  min-width: 4.4rem;
-  padding: 0 0.7rem;
-  border-color: var(--sidebar-border);
-  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-presenter__canvas-wrap {
@@ -841,7 +713,7 @@ onBeforeUnmount(() => {
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   border: 1px solid var(--sidebar-border);
-  border-radius: 28px;
+  border-radius: 16px;
   background: var(--sidebar-surface);
   box-shadow: var(--sidebar-shadow);
   overflow: hidden;
@@ -855,7 +727,7 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__canvas-bounds {
   position: absolute;
-  inset: 1rem 1rem 0.4rem;
+  inset: 0.45rem 0.56rem 0.24rem;
   overflow: hidden;
 }
 
@@ -882,7 +754,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__clicks {
-  padding: 0 1.1rem 1rem;
+  padding: 0 0.62rem 0.56rem;
 }
 
 .sidebar-presenter__notes {
@@ -891,21 +763,51 @@ onBeforeUnmount(() => {
   min-height: 0;
   max-height: clamp(9rem, 22vh, 15rem);
   border: 1px solid var(--sidebar-border);
-  border-radius: 22px;
+  border-radius: 16px;
   background: var(--sidebar-notes-bg);
-  padding: 0.78rem 0.9rem 0.9rem;
+  margin-top: 0.5rem;
+  padding: 0.58rem 0.68rem 0.68rem;
+}
+
+.sidebar-presenter__notes.is-collapsed {
+  grid-template-rows: auto;
+  max-height: none;
+  padding-bottom: 0.58rem;
 }
 
 .sidebar-presenter__notes-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
+}
+
+.sidebar-presenter__notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  min-width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 999px;
+  background: var(--sidebar-soft-button-bg);
+  color: var(--sidebar-ink);
+  font-size: 0.82rem;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.sidebar-presenter__notes-toggle:hover {
+  transform: translateY(-1px);
+  background: var(--sidebar-thumb-hover);
 }
 
 .sidebar-presenter__notes-body {
   min-height: 0;
   overflow: hidden;
-  margin-top: 0.55rem;
+  margin-top: 0.38rem;
 }
 
 .sidebar-presenter__notes-display {
@@ -913,8 +815,8 @@ onBeforeUnmount(() => {
   max-width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 0.82rem 0.88rem;
-  border-radius: 16px;
+  padding: 0.62rem 0.7rem;
+  border-radius: 12px;
   background: var(--sidebar-notes-display-bg);
   color: var(--sidebar-ink-soft);
   line-height: 1.7;
@@ -959,7 +861,8 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__progress {
   height: 4px;
-  margin-bottom: 0.75rem;
+  margin-top: 0.4rem;
+  margin-bottom: 0.55rem;
   border-radius: 999px;
   background: var(--sidebar-progress-track);
   overflow: hidden;
@@ -1005,22 +908,7 @@ onBeforeUnmount(() => {
   }
 
   .sidebar-presenter__main {
-    padding: 1rem;
-  }
-
-  .sidebar-presenter__main-head {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .sidebar-presenter__main-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .sidebar-presenter__zoom {
-    width: 100%;
-    justify-content: center;
+    padding: 0.56rem;
   }
 }
 </style>

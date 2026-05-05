@@ -4,7 +4,7 @@ PowerPoint-style pane presenter for Slidev.
 
 ## What it does
 
-- Adds a dedicated `/pane-presenter/:no` page with a two-pane layout.
+- Adds a dedicated `/pane-view/:no` page with a two-pane layout.
 - Left side shows slide thumbnails.
 - Right side shows the active slide.
 - Lets you zoom the active slide with on-screen controls or `Ctrl/⌘ + mouse wheel`.
