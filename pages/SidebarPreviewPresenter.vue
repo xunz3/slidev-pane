@@ -66,6 +66,8 @@ useHead({ title: slidesTitle })
 const thumbWidth = 208
 const thumbRowHeight = 180
 const thumbOverscan = 4
+const thumbViewportPaddingTop = 14
+const thumbViewportPaddingBottom = 16
 const thumbScrollTop = ref(0)
 const thumbViewportHeight = ref(0)
 const isCompactLayout = ref(false)
@@ -98,8 +100,10 @@ const virtualRange = computed(() => {
     }
   }
 
-  const visibleCount = Math.max(1, Math.ceil(thumbViewportHeight.value / thumbRowHeight))
-  const start = Math.max(0, Math.floor(thumbScrollTop.value / thumbRowHeight) - thumbOverscan)
+  const visibleTrackHeight = Math.max(0, thumbViewportHeight.value - thumbViewportPaddingTop - thumbViewportPaddingBottom)
+  const visibleCount = Math.max(1, Math.ceil(visibleTrackHeight / thumbRowHeight))
+  const normalizedScrollTop = Math.max(0, thumbScrollTop.value - thumbViewportPaddingTop)
+  const start = Math.max(0, Math.floor(normalizedScrollTop / thumbRowHeight) - thumbOverscan)
   const end = Math.min(slides.value.length, start + visibleCount + thumbOverscan * 2)
 
   return { start, end }
@@ -110,11 +114,15 @@ const visibleSlides = computed(() => {
 
   return slides.value.slice(start, end).map((route, index) => ({
     route,
-    top: (start + index) * thumbRowHeight,
+    top: thumbViewportPaddingTop + (start + index) * thumbRowHeight,
   }))
 })
 
-const totalThumbsHeight = computed(() => `${slides.value.length * thumbRowHeight}px`)
+const totalThumbsHeight = computed(() => `${thumbViewportPaddingTop + slides.value.length * thumbRowHeight + thumbViewportPaddingBottom}px`)
+const thumbFrameStyle = computed(() => ({
+  width: `${thumbWidth + 2}px`,
+  maxWidth: '100%',
+}))
 const canvasFrameStyle = computed(() => {
   if (!canvasBoundsWidth.value || !canvasBoundsHeight.value)
     return {}
@@ -260,7 +268,7 @@ function ensureCurrentThumbVisible(no: number) {
   if (!viewport || isCompactLayout.value)
     return
 
-  const currentTop = (no - 1) * thumbRowHeight
+  const currentTop = thumbViewportPaddingTop + (no - 1) * thumbRowHeight
   const currentBottom = currentTop + thumbRowHeight
   const viewportTop = viewport.scrollTop
   const viewportBottom = viewportTop + viewport.clientHeight
@@ -343,7 +351,7 @@ onBeforeUnmount(() => {
                 {{ route.meta?.slide?.title || `Slide ${route.no}` }}
               </span>
             </div>
-            <div class="sidebar-presenter__thumb-frame">
+            <div class="sidebar-presenter__thumb-frame" :style="thumbFrameStyle">
               <SlideContainer
                 :key="route.no"
                 :width="thumbWidth"
@@ -383,7 +391,7 @@ onBeforeUnmount(() => {
                   {{ route.meta?.slide?.title || `Slide ${route.no}` }}
                 </span>
               </div>
-              <div class="sidebar-presenter__thumb-frame">
+              <div class="sidebar-presenter__thumb-frame" :style="thumbFrameStyle">
                 <SlideContainer
                   :key="route.no"
                   :width="thumbWidth"
@@ -634,7 +642,7 @@ onBeforeUnmount(() => {
 .sidebar-presenter__thumbs {
   flex: 1;
   overflow-y: auto;
-  padding: 0.9rem 0.75rem 1rem;
+  padding: 14px 12px 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
@@ -694,6 +702,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__thumb-frame {
+  align-self: center;
   overflow: hidden;
   border-radius: 12px;
   border: 1px solid var(--sidebar-border);
