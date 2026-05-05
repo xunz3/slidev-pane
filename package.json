@@ -1,6 +1,6 @@
 {
   "name": "slidev-pane",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "A PowerPoint-style pane presenter for Slidev",
   "license": "MIT",
