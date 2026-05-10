@@ -1,6 +1,6 @@
 ---
 title: slidev-pane Demo
-theme: apple-basic
+theme: scholarly
 addons:
   - '@/.'
 drawings:

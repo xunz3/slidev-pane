@@ -6,7 +6,7 @@ import { createFixedClicks } from '@slidev/client/composables/useClicks.ts'
 import { useSwipeControls } from '@slidev/client/composables/useSwipeControls.ts'
 import { useNav } from '@slidev/client/composables/useNav.ts'
 import { CLICKS_MAX } from '@slidev/client/constants.ts'
-import { slidesTitle } from '@slidev/client/env.ts'
+import { slideAspect, slidesTitle } from '@slidev/client/env.ts'
 import ClicksSlider from '@slidev/client/internals/ClicksSlider.vue'
 import ContextMenu from '@slidev/client/internals/ContextMenu.vue'
 import DrawingControls from '@slidev/client/internals/DrawingControls.vue'
@@ -64,7 +64,6 @@ const {
 useHead({ title: slidesTitle })
 
 const thumbWidth = 208
-const thumbRowHeight = 180
 const thumbOverscan = 4
 const thumbViewportPaddingTop = 14
 const thumbViewportPaddingBottom = 16
@@ -92,6 +91,12 @@ const progressWidth = computed(() => {
   return `${((currentSlideNo.value - 1) / (total.value - 1)) * 100 + 1}%`
 })
 
+const thumbFrameHeight = computed(() => Math.ceil(thumbWidth / slideAspect.value))
+const thumbRowHeight = computed(() => thumbFrameHeight.value + 64)
+const presenterStyle = computed(() => ({
+  '--sidebar-thumb-row-height': `${thumbRowHeight.value}px`,
+}))
+
 const virtualRange = computed(() => {
   if (isCompactLayout.value) {
     return {
@@ -101,9 +106,9 @@ const virtualRange = computed(() => {
   }
 
   const visibleTrackHeight = Math.max(0, thumbViewportHeight.value - thumbViewportPaddingTop - thumbViewportPaddingBottom)
-  const visibleCount = Math.max(1, Math.ceil(visibleTrackHeight / thumbRowHeight))
+  const visibleCount = Math.max(1, Math.ceil(visibleTrackHeight / thumbRowHeight.value))
   const normalizedScrollTop = Math.max(0, thumbScrollTop.value - thumbViewportPaddingTop)
-  const start = Math.max(0, Math.floor(normalizedScrollTop / thumbRowHeight) - thumbOverscan)
+  const start = Math.max(0, Math.floor(normalizedScrollTop / thumbRowHeight.value) - thumbOverscan)
   const end = Math.min(slides.value.length, start + visibleCount + thumbOverscan * 2)
 
   return { start, end }
@@ -114,13 +119,14 @@ const visibleSlides = computed(() => {
 
   return slides.value.slice(start, end).map((route, index) => ({
     route,
-    top: thumbViewportPaddingTop + (start + index) * thumbRowHeight,
+    top: thumbViewportPaddingTop + (start + index) * thumbRowHeight.value,
   }))
 })
 
-const totalThumbsHeight = computed(() => `${thumbViewportPaddingTop + slides.value.length * thumbRowHeight + thumbViewportPaddingBottom}px`)
+const totalThumbsHeight = computed(() => `${thumbViewportPaddingTop + slides.value.length * thumbRowHeight.value + thumbViewportPaddingBottom}px`)
 const thumbFrameStyle = computed(() => ({
   width: `${thumbWidth + 2}px`,
+  height: `${thumbFrameHeight.value + 2}px`,
   maxWidth: '100%',
 }))
 const canvasFrameStyle = computed(() => {
@@ -268,8 +274,8 @@ function ensureCurrentThumbVisible(no: number) {
   if (!viewport || isCompactLayout.value)
     return
 
-  const currentTop = thumbViewportPaddingTop + (no - 1) * thumbRowHeight
-  const currentBottom = currentTop + thumbRowHeight
+  const currentTop = thumbViewportPaddingTop + (no - 1) * thumbRowHeight.value
+  const currentBottom = currentTop + thumbRowHeight.value
   const viewportTop = viewport.scrollTop
   const viewportBottom = viewportTop + viewport.clientHeight
 
@@ -323,7 +329,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="sidebar-presenter" :class="{ 'is-dark': isDark }">
+  <div class="sidebar-presenter" :class="{ 'is-dark': isDark }" :style="presenterStyle">
     <aside class="sidebar-presenter__rail">
       <div class="sidebar-presenter__rail-head">
         <h1 class="sidebar-presenter__heading">
