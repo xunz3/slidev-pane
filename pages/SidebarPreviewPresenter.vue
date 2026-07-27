@@ -63,6 +63,7 @@ const {
 
 useHead({ title: slidesTitle })
 
+const presenterTitle = computed(() => slidesTitle.replace(/\s+-\s+Slidev$/, ''))
 const thumbWidth = 208
 const thumbOverscan = 4
 const thumbViewportPaddingTop = 14
@@ -333,7 +334,7 @@ onBeforeUnmount(() => {
     <aside class="sidebar-presenter__rail">
       <div class="sidebar-presenter__rail-head">
         <h1 class="sidebar-presenter__heading">
-          {{ slidesTitle }}
+          {{ presenterTitle }}
         </h1>
       </div>
 
