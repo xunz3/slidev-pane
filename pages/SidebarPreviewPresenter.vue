@@ -23,6 +23,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SidebarGoto from '../components/SidebarGoto.vue'
 import SidebarNavControls from '../components/SidebarNavControls.vue'
 import SidebarQuickOverview from '../components/SidebarQuickOverview.vue'
+import {
+  getNotesHeightMax,
+  getRailWidthMax,
+  SIDEBAR_PRESENTER_MIN_NOTES_HEIGHT,
+  SIDEBAR_PRESENTER_MIN_RAIL_WIDTH,
+  useSidebarPresenterLayout,
+} from '../composables/useSidebarPresenterLayout'
 import { useSidebarPresenterNav } from '../composables/useSidebarPresenterNav'
 import {
   SIDEBAR_PRESENTER_DEFAULT_ZOOM,
@@ -60,12 +67,23 @@ const {
   setSlideZoom,
   slideZoom,
 } = useSidebarPresenterZoom()
+const {
+  constrainPresenterLayout,
+  notesHeight,
+  persistPresenterLayout,
+  railWidth,
+  resetNotesHeight,
+  resetRailWidth,
+  setNotesHeight,
+  setRailWidth,
+} = useSidebarPresenterLayout()
 
 useHead({ title: slidesTitle })
 
 const presenterTitle = computed(() => slidesTitle.replace(/\s+-\s+Slidev$/, ''))
-const thumbWidth = 208
+const defaultThumbWidth = 208
 const thumbOverscan = 4
+const sectionHeaderHeight = 44
 const thumbViewportPaddingTop = 14
 const thumbViewportPaddingBottom = 16
 const thumbScrollTop = ref(0)
@@ -73,11 +91,45 @@ const thumbViewportHeight = ref(0)
 const isCompactLayout = ref(false)
 const notesEditing = ref(false)
 const notesCollapsed = ref(false)
+const collapsedSectionIds = ref<Set<string>>(new Set())
 const thumbnailClicks = new WeakMap<object, ReturnType<typeof createFixedClicks>>()
+type ResizeTarget = 'notes' | 'rail'
+type ResizeSession = {
+  pointerId: number
+  startPosition: number
+  startSize: number
+  target: ResizeTarget
+}
+type SlideRoute = (typeof slides.value)[number]
+type SlideSection = {
+  id: string
+  slides: SlideRoute[]
+  title: string
+}
+type ThumbnailItem =
+  | {
+    height: number
+    key: string
+    kind: 'section'
+    section: SlideSection
+    top: number
+  }
+  | {
+    height: number
+    key: string
+    kind: 'slide'
+    route: SlideRoute
+    sectionId: string
+    top: number
+  }
+
+const resizeSession = ref<ResizeSession>()
 let thumbViewportObserver: ResizeObserver | undefined
 let compactLayoutMedia: MediaQueryList | undefined
+let previousBodyCursor = ''
+let previousBodyUserSelect = ''
 
-function getThumbnailClicks(route: (typeof slides.value)[number]) {
+function getThumbnailClicks(route: SlideRoute) {
   if (!thumbnailClicks.has(route))
     thumbnailClicks.set(route, createFixedClicks(route, CLICKS_MAX))
 
@@ -92,41 +144,141 @@ const progressWidth = computed(() => {
   return `${((currentSlideNo.value - 1) / (total.value - 1)) * 100 + 1}%`
 })
 
-const thumbFrameHeight = computed(() => Math.ceil(thumbWidth / slideAspect.value))
+const thumbWidth = computed(() => isCompactLayout.value
+  ? defaultThumbWidth
+  : Math.round(clampBetween(railWidth.value - 78, 176, 360)))
+const thumbFrameHeight = computed(() => Math.ceil(thumbWidth.value / slideAspect.value))
 const thumbRowHeight = computed(() => thumbFrameHeight.value + 64)
 const presenterStyle = computed(() => ({
+  '--sidebar-notes-height': `${notesHeight.value}px`,
+  '--sidebar-rail-width': `${railWidth.value}px`,
   '--sidebar-thumb-row-height': `${thumbRowHeight.value}px`,
 }))
 
-const virtualRange = computed(() => {
-  if (isCompactLayout.value) {
-    return {
-      start: 0,
-      end: slides.value.length,
+function getSlideTitle(route: SlideRoute) {
+  return route.meta?.slide?.title?.trim() || `Slide ${route.no}`
+}
+
+function getSlideFrontmatter(route: SlideRoute) {
+  return route.meta?.slide?.frontmatter as Record<string, unknown> | undefined
+}
+
+function getExplicitSectionTitle(route: SlideRoute) {
+  const section = getSlideFrontmatter(route)?.section
+
+  if (typeof section === 'string' && section.trim())
+    return section.trim()
+
+  if (section && typeof section === 'object') {
+    const title = (section as Record<string, unknown>).title
+    if (typeof title === 'string' && title.trim())
+      return title.trim()
+  }
+}
+
+function startsSection(route: SlideRoute, index: number) {
+  if (index === 0)
+    return true
+
+  const frontmatter = getSlideFrontmatter(route)
+  return frontmatter?.layout === 'section' || Boolean(frontmatter?.section)
+}
+
+const slideSections = computed<SlideSection[]>(() => {
+  const sections: SlideSection[] = []
+  let currentSection: SlideSection | undefined
+
+  slides.value.forEach((route, index) => {
+    if (!currentSection || startsSection(route, index)) {
+      currentSection = {
+        id: `section-${route.no}`,
+        slides: [],
+        title: getExplicitSectionTitle(route) || getSlideTitle(route),
+      }
+      sections.push(currentSection)
+    }
+
+    currentSection.slides.push(route)
+  })
+
+  return sections
+})
+
+const currentSectionId = computed(() =>
+  slideSections.value.find(section =>
+    section.slides.some(route => route.no === currentSlideNo.value),
+  )?.id,
+)
+
+function isSectionCollapsed(sectionId: string) {
+  return collapsedSectionIds.value.has(sectionId)
+}
+
+function toggleSection(sectionId: string) {
+  const next = new Set(collapsedSectionIds.value)
+
+  if (next.has(sectionId))
+    next.delete(sectionId)
+  else
+    next.add(sectionId)
+
+  collapsedSectionIds.value = next
+}
+
+const thumbnailLayout = computed(() => {
+  const items: ThumbnailItem[] = []
+  let top = thumbViewportPaddingTop
+
+  for (const section of slideSections.value) {
+    items.push({
+      height: sectionHeaderHeight,
+      key: section.id,
+      kind: 'section',
+      section,
+      top,
+    })
+    top += sectionHeaderHeight
+
+    if (isSectionCollapsed(section.id))
+      continue
+
+    for (const route of section.slides) {
+      items.push({
+        height: thumbRowHeight.value,
+        key: `slide-${route.no}`,
+        kind: 'slide',
+        route,
+        sectionId: section.id,
+        top,
+      })
+      top += thumbRowHeight.value
     }
   }
 
-  const visibleTrackHeight = Math.max(0, thumbViewportHeight.value - thumbViewportPaddingTop - thumbViewportPaddingBottom)
-  const visibleCount = Math.max(1, Math.ceil(visibleTrackHeight / thumbRowHeight.value))
-  const normalizedScrollTop = Math.max(0, thumbScrollTop.value - thumbViewportPaddingTop)
-  const start = Math.max(0, Math.floor(normalizedScrollTop / thumbRowHeight.value) - thumbOverscan)
-  const end = Math.min(slides.value.length, start + visibleCount + thumbOverscan * 2)
-
-  return { start, end }
+  return {
+    items,
+    totalHeight: top + thumbViewportPaddingBottom,
+  }
 })
 
-const visibleSlides = computed(() => {
-  const { start, end } = virtualRange.value
+const visibleThumbnailItems = computed(() => {
+  if (isCompactLayout.value)
+    return thumbnailLayout.value.items
 
-  return slides.value.slice(start, end).map((route, index) => ({
-    route,
-    top: thumbViewportPaddingTop + (start + index) * thumbRowHeight.value,
-  }))
+  const overscan = thumbOverscan * thumbRowHeight.value
+  const viewportStart = Math.max(0, thumbScrollTop.value - overscan)
+  const viewportEnd = thumbScrollTop.value + thumbViewportHeight.value + overscan
+
+  return thumbnailLayout.value.items.filter(item =>
+    item.top + item.height >= viewportStart && item.top <= viewportEnd,
+  )
 })
 
-const totalThumbsHeight = computed(() => `${thumbViewportPaddingTop + slides.value.length * thumbRowHeight.value + thumbViewportPaddingBottom}px`)
+const thumbnailListStyle = computed(() => isCompactLayout.value
+  ? undefined
+  : { height: `${thumbnailLayout.value.totalHeight}px` })
 const thumbFrameStyle = computed(() => ({
-  width: `${thumbWidth + 2}px`,
+  width: `${thumbWidth.value + 2}px`,
   height: `${thumbFrameHeight.value + 2}px`,
   maxWidth: '100%',
 }))
@@ -152,6 +304,95 @@ const canvasStyle = computed(() => {
 
 function clampBetween(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+function getThumbnailItemStyle(item: ThumbnailItem) {
+  if (isCompactLayout.value)
+    return undefined
+
+  return {
+    height: `${item.height}px`,
+    top: `${item.top}px`,
+  }
+}
+
+function beginResize(target: ResizeTarget, event: PointerEvent) {
+  if (event.button !== 0 || isCompactLayout.value)
+    return
+
+  event.preventDefault()
+  previousBodyCursor = document.body.style.cursor
+  previousBodyUserSelect = document.body.style.userSelect
+  document.body.style.cursor = target === 'rail' ? 'col-resize' : 'row-resize'
+  document.body.style.userSelect = 'none'
+
+  resizeSession.value = {
+    pointerId: event.pointerId,
+    startPosition: target === 'rail' ? event.clientX : event.clientY,
+    startSize: target === 'rail' ? railWidth.value : notesHeight.value,
+    target,
+  }
+
+  window.addEventListener('pointermove', handleResize)
+  window.addEventListener('pointerup', finishResize)
+  window.addEventListener('pointercancel', finishResize)
+}
+
+function handleResize(event: PointerEvent) {
+  const session = resizeSession.value
+  if (!session || event.pointerId !== session.pointerId)
+    return
+
+  event.preventDefault()
+
+  if (session.target === 'rail')
+    setRailWidth(session.startSize + event.clientX - session.startPosition, false)
+  else
+    setNotesHeight(session.startSize + session.startPosition - event.clientY, false)
+}
+
+function finishResize(event?: PointerEvent) {
+  const session = resizeSession.value
+  if (!session || (event && event.pointerId !== session.pointerId))
+    return
+
+  const resizedTarget = session.target
+  resizeSession.value = undefined
+  window.removeEventListener('pointermove', handleResize)
+  window.removeEventListener('pointerup', finishResize)
+  window.removeEventListener('pointercancel', finishResize)
+  document.body.style.cursor = previousBodyCursor
+  document.body.style.userSelect = previousBodyUserSelect
+  persistPresenterLayout()
+
+  if (resizedTarget === 'rail') {
+    nextTick(() => {
+      measureThumbViewport()
+      ensureCurrentThumbVisible(currentSlideNo.value)
+    })
+  }
+}
+
+function handleRailResizeKeydown(event: KeyboardEvent) {
+  if (event.key === 'Home') {
+    event.preventDefault()
+    resetRailWidth()
+  }
+  else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    setRailWidth(railWidth.value + (event.key === 'ArrowLeft' ? -16 : 16))
+  }
+}
+
+function handleNotesResizeKeydown(event: KeyboardEvent) {
+  if (event.key === 'Home') {
+    event.preventDefault()
+    resetNotesHeight()
+  }
+  else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    setNotesHeight(notesHeight.value + (event.key === 'ArrowUp' ? 16 : -16))
+  }
 }
 
 function getCanvasMetrics(zoom = slideZoom.value) {
@@ -251,14 +492,19 @@ function handleCanvasWheel(event: WheelEvent) {
 }
 
 function restoreCursor() {
-  document.body.style.cursor = ''
+  if (!resizeSession.value)
+    document.body.style.cursor = ''
 }
 
 function updateCompactLayout() {
   if (typeof window === 'undefined')
     return
 
+  if (resizeSession.value)
+    finishResize()
+
   isCompactLayout.value = window.innerWidth <= 960
+  constrainPresenterLayout()
 }
 
 function measureThumbViewport() {
@@ -275,8 +521,14 @@ function ensureCurrentThumbVisible(no: number) {
   if (!viewport || isCompactLayout.value)
     return
 
-  const currentTop = thumbViewportPaddingTop + (no - 1) * thumbRowHeight.value
-  const currentBottom = currentTop + thumbRowHeight.value
+  const currentItem = thumbnailLayout.value.items.find(item =>
+    item.kind === 'slide' && item.route.no === no,
+  )
+  if (!currentItem)
+    return
+
+  const currentTop = currentItem.top
+  const currentBottom = currentTop + currentItem.height
   const viewportTop = viewport.scrollTop
   const viewportBottom = viewportTop + viewport.clientHeight
 
@@ -294,6 +546,12 @@ function ensureCurrentThumbVisible(no: number) {
 watch(
   currentSlideNo,
   async (no) => {
+    if (currentSectionId.value && isSectionCollapsed(currentSectionId.value)) {
+      const next = new Set(collapsedSectionIds.value)
+      next.delete(currentSectionId.value)
+      collapsedSectionIds.value = next
+    }
+
     await nextTick()
     ensureCurrentThumbVisible(no)
   },
@@ -313,6 +571,7 @@ onMounted(() => {
   document.body.addEventListener('pointerdown', restoreCursor, { passive: true })
   compactLayoutMedia = window.matchMedia('(max-width: 960px)')
   compactLayoutMedia.addEventListener('change', updateCompactLayout)
+  window.addEventListener('resize', updateCompactLayout, { passive: true })
 
   if (typeof ResizeObserver !== 'undefined' && thumbViewport.value) {
     thumbViewportObserver = new ResizeObserver(() => measureThumbViewport())
@@ -321,16 +580,23 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (resizeSession.value)
+    finishResize()
   document.body.removeEventListener('pointermove', restoreCursor)
   document.body.removeEventListener('pointerdown', restoreCursor)
   restoreCursor()
   compactLayoutMedia?.removeEventListener('change', updateCompactLayout)
+  window.removeEventListener('resize', updateCompactLayout)
   thumbViewportObserver?.disconnect()
 })
 </script>
 
 <template>
-  <div class="sidebar-presenter" :class="{ 'is-dark': isDark }" :style="presenterStyle">
+  <div
+    class="sidebar-presenter"
+    :class="{ 'is-dark': isDark, 'is-resizing': resizeSession }"
+    :style="presenterStyle"
+  >
     <aside class="sidebar-presenter__rail">
       <div class="sidebar-presenter__rail-head">
         <h1 class="sidebar-presenter__heading">
@@ -343,73 +609,63 @@ onBeforeUnmount(() => {
         class="sidebar-presenter__thumbs"
         @scroll.passive="handleThumbScroll"
       >
-        <template v-if="isCompactLayout">
-          <button
-            v-for="route in slides"
-            :key="route.no"
-            type="button"
-            class="sidebar-presenter__thumb"
-            :class="{ 'is-active': route.no === currentSlideNo }"
-            @click="goSidebar(route.no)"
-          >
-            <div class="sidebar-presenter__thumb-meta">
-              <span>{{ route.no }}</span>
-              <span class="sidebar-presenter__thumb-title">
-                {{ route.meta?.slide?.title || `Slide ${route.no}` }}
-              </span>
-            </div>
-            <div class="sidebar-presenter__thumb-frame" :style="thumbFrameStyle">
-              <SlideContainer
-                :key="route.no"
-                :width="thumbWidth"
-                class="pointer-events-none important:[&_*]:select-none"
-              >
-                <SlideWrapper
-                  :clicks-context="getThumbnailClicks(route)"
-                  :route="route"
-                  render-context="overview"
-                />
-                <DrawingPreview :page="route.no" />
-              </SlideContainer>
-            </div>
-          </button>
-        </template>
-
         <div
-          v-else
           class="sidebar-presenter__thumbs-spacer"
-          :style="{ height: totalThumbsHeight }"
+          :style="thumbnailListStyle"
         >
           <div
-            v-for="{ route, top } in visibleSlides"
-            :key="route.no"
-            class="sidebar-presenter__thumb-row"
-            :style="{ top: `${top}px` }"
+            v-for="item in visibleThumbnailItems"
+            :key="item.key"
+            class="sidebar-presenter__thumb-item"
+            :class="`is-${item.kind}`"
+            :style="getThumbnailItemStyle(item)"
           >
             <button
+              v-if="item.kind === 'section'"
+              type="button"
+              class="sidebar-presenter__section"
+              :class="{ 'is-active': item.section.id === currentSectionId }"
+              :aria-expanded="!isSectionCollapsed(item.section.id)"
+              @click="toggleSection(item.section.id)"
+            >
+              <span
+                class="sidebar-presenter__section-chevron"
+                :class="isSectionCollapsed(item.section.id) ? 'i-carbon:chevron-right' : 'i-carbon:chevron-down'"
+              />
+              <span class="sidebar-presenter__section-title">
+                {{ item.section.title }}
+              </span>
+              <span class="sidebar-presenter__section-count">
+                {{ item.section.slides.length }}
+              </span>
+            </button>
+
+            <button
+              v-else
               type="button"
               class="sidebar-presenter__thumb"
-              :class="{ 'is-active': route.no === currentSlideNo }"
-              @click="goSidebar(route.no)"
+              :class="{ 'is-active': item.route.no === currentSlideNo }"
+              :data-slide-no="item.route.no"
+              @click="goSidebar(item.route.no)"
             >
               <div class="sidebar-presenter__thumb-meta">
-                <span>{{ route.no }}</span>
+                <span>{{ item.route.no }}</span>
                 <span class="sidebar-presenter__thumb-title">
-                  {{ route.meta?.slide?.title || `Slide ${route.no}` }}
+                  {{ getSlideTitle(item.route) }}
                 </span>
               </div>
               <div class="sidebar-presenter__thumb-frame" :style="thumbFrameStyle">
                 <SlideContainer
-                  :key="route.no"
+                  :key="item.route.no"
                   :width="thumbWidth"
                   class="pointer-events-none important:[&_*]:select-none"
                 >
                   <SlideWrapper
-                    :clicks-context="getThumbnailClicks(route)"
-                    :route="route"
+                    :clicks-context="getThumbnailClicks(item.route)"
+                    :route="item.route"
                     render-context="overview"
                   />
-                  <DrawingPreview :page="route.no" />
+                  <DrawingPreview :page="item.route.no" />
                 </SlideContainer>
               </div>
             </button>
@@ -417,6 +673,23 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </aside>
+
+    <div
+      class="sidebar-presenter__rail-resizer"
+      role="separator"
+      aria-label="Resize slide pane"
+      aria-orientation="vertical"
+      :aria-valuemin="SIDEBAR_PRESENTER_MIN_RAIL_WIDTH"
+      :aria-valuemax="getRailWidthMax()"
+      :aria-valuenow="railWidth"
+      tabindex="0"
+      title="Drag to resize · Double-click to reset"
+      @dblclick="resetRailWidth"
+      @keydown="handleRailResizeKeydown"
+      @pointerdown="beginResize('rail', $event)"
+    >
+      <span />
+    </div>
 
     <main ref="main" class="sidebar-presenter__main">
       <section class="sidebar-presenter__canvas-wrap">
@@ -458,6 +731,23 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="sidebar-presenter__notes" :class="{ 'is-collapsed': notesCollapsed }">
+        <div
+          v-if="!notesCollapsed"
+          class="sidebar-presenter__notes-resizer"
+          role="separator"
+          aria-label="Resize notes pane"
+          aria-orientation="horizontal"
+          :aria-valuemin="SIDEBAR_PRESENTER_MIN_NOTES_HEIGHT"
+          :aria-valuemax="getNotesHeightMax()"
+          :aria-valuenow="notesHeight"
+          tabindex="0"
+          title="Drag to resize · Double-click to reset"
+          @dblclick="resetNotesHeight"
+          @keydown="handleNotesResizeKeydown"
+          @pointerdown="beginResize('notes', $event)"
+        >
+          <span />
+        </div>
         <div class="sidebar-presenter__notes-head">
           <p class="sidebar-presenter__eyebrow">
             Notes
@@ -540,10 +830,14 @@ onBeforeUnmount(() => {
   --sidebar-scrollbar-thumb-hover: rgba(17, 17, 17, 0.28);
   --sidebar-thumb-row-height: 180px;
   display: grid;
-  grid-template-columns: 286px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-rail-width, 286px) 7px minmax(0, 1fr);
   height: 100vh;
   background: linear-gradient(180deg, #ffffff 0%, #f6f6f7 100%);
   color: var(--sidebar-ink);
+}
+
+.sidebar-presenter.is-resizing {
+  cursor: inherit;
 }
 
 .sidebar-presenter.is-dark {
@@ -574,9 +868,48 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--sidebar-border);
   background: var(--sidebar-rail-bg);
   backdrop-filter: blur(18px);
+}
+
+.sidebar-presenter__rail-resizer {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-width: 7px;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--sidebar-border);
+  border-left: 1px solid var(--sidebar-border);
+  background: var(--sidebar-rail-bg);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-presenter__rail-resizer span {
+  width: 2px;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--sidebar-border-strong);
+  opacity: 0;
+  transition:
+    height 150ms ease,
+    opacity 150ms ease,
+    background-color 150ms ease;
+}
+
+.sidebar-presenter__rail-resizer:hover span,
+.sidebar-presenter__rail-resizer:focus-visible span,
+.sidebar-presenter.is-resizing .sidebar-presenter__rail-resizer span {
+  height: 4rem;
+  background: var(--sidebar-ink-soft);
+  opacity: 1;
+}
+
+.sidebar-presenter__rail-resizer:focus-visible,
+.sidebar-presenter__notes-resizer:focus-visible {
+  outline: 2px solid var(--sidebar-ink-soft);
+  outline-offset: -2px;
 }
 
 .sidebar-presenter__rail-head,
@@ -649,7 +982,7 @@ onBeforeUnmount(() => {
 .sidebar-presenter__thumbs {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 12px 16px;
+  padding: 0 12px;
   scrollbar-width: thin;
   scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
@@ -658,11 +991,69 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.sidebar-presenter__thumb-row {
+.sidebar-presenter__thumb-item {
   position: absolute;
   left: 0;
   right: 0;
-  height: var(--sidebar-thumb-row-height);
+}
+
+.sidebar-presenter__section {
+  display: flex;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0 0.52rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sidebar-ink-soft);
+  text-align: left;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.sidebar-presenter__section:hover {
+  background: var(--sidebar-thumb-hover);
+  color: var(--sidebar-ink);
+}
+
+.sidebar-presenter__section.is-active {
+  color: var(--sidebar-ink);
+}
+
+.sidebar-presenter__section-chevron {
+  width: 0.85rem;
+  min-width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.72;
+}
+
+.sidebar-presenter__section-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-presenter__section-count {
+  display: inline-flex;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--sidebar-thumb-hover);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--sidebar-ink-soft);
 }
 
 .sidebar-presenter__thumb {
@@ -774,10 +1165,11 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__notes {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: var(--sidebar-notes-height, clamp(9rem, 22vh, 15rem));
   min-height: 0;
-  max-height: clamp(9rem, 22vh, 15rem);
   border: 1px solid var(--sidebar-border);
   border-radius: 16px;
   background: var(--sidebar-notes-bg);
@@ -787,8 +1179,42 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__notes.is-collapsed {
   grid-template-rows: auto;
-  max-height: none;
+  height: auto;
   padding-bottom: 0.58rem;
+}
+
+.sidebar-presenter__notes-resizer {
+  position: absolute;
+  z-index: 4;
+  top: -0.58rem;
+  right: 0.85rem;
+  left: 0.85rem;
+  display: flex;
+  height: 0.58rem;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.sidebar-presenter__notes-resizer span {
+  width: 2.6rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sidebar-border-strong);
+  opacity: 0;
+  transition:
+    opacity 150ms ease,
+    width 150ms ease,
+    background-color 150ms ease;
+}
+
+.sidebar-presenter__notes-resizer:hover span,
+.sidebar-presenter__notes-resizer:focus-visible span,
+.sidebar-presenter.is-resizing .sidebar-presenter__notes-resizer span {
+  width: 4rem;
+  background: var(--sidebar-ink-soft);
+  opacity: 1;
 }
 
 .sidebar-presenter__notes-actions {
@@ -897,8 +1323,13 @@ onBeforeUnmount(() => {
     grid-template-rows: 190px minmax(0, 1fr);
   }
 
+  .sidebar-presenter__rail-resizer,
+  .sidebar-presenter__notes-resizer {
+    display: none;
+  }
+
   .sidebar-presenter__thumbs-spacer,
-  .sidebar-presenter__thumb-row {
+  .sidebar-presenter__thumb-item {
     position: static;
     height: auto;
   }
@@ -909,11 +1340,36 @@ onBeforeUnmount(() => {
   }
 
   .sidebar-presenter__thumbs {
-    display: flex;
-    gap: 0.75rem;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-top: 0.75rem;
+  }
+
+  .sidebar-presenter__thumbs-spacer {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    height: 100%;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.75rem 0 1rem;
+  }
+
+  .sidebar-presenter__thumb-item.is-section {
+    display: flex;
+    width: 154px;
+    min-width: 154px;
+    align-items: stretch;
+  }
+
+  .sidebar-presenter__section {
+    height: auto;
+    align-items: center;
+    border-color: var(--sidebar-border);
+    background: var(--sidebar-surface);
+  }
+
+  .sidebar-presenter__section-title {
+    white-space: normal;
   }
 
   .sidebar-presenter__thumb {

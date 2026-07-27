@@ -5,8 +5,9 @@ PowerPoint-style pane presenter for Slidev.
 ## What it does
 
 - Adds a dedicated `/pane-view/:no` page with a two-pane layout.
-- Left side shows slide thumbnails.
+- Left side shows slide thumbnails grouped into collapsible sections.
 - Right side shows the active slide.
+- Lets you resize the thumbnail and notes panes. Sizes are restored on the next visit.
 - Lets you zoom the active slide with on-screen controls or `Ctrl/⌘ + mouse wheel`.
 - Keeps Slidev's built-in presenter mode intact.
 - Adds a `Pane` entry to Slidev's standard nav controls.
@@ -32,3 +33,15 @@ Then add it to the deck's `package.json`:
 
 Press `p` to enter or leave the pane presenter mode.
 Use the zoom controls in the header, or hold `Ctrl`/`⌘` and scroll on the slide to resize the active slide area.
+
+Drag the divider beside the thumbnail pane or above the notes pane to resize it.
+Double-click either divider to restore its default size.
+
+Slides using Slidev's `layout: section` start a collapsible thumbnail group named after
+the slide title. A group can also be started and named explicitly:
+
+```yaml
+---
+section: Custom section name
+---
+```
