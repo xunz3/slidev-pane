@@ -1,4 +1,5 @@
 import { defineAppSetup } from '@slidev/types'
+import { installSidebarPresenterSyncRouteBridge } from './sync'
 
 const GOTO_FIX_STYLE_ID = 'slidev-pane-goto-visibility-fix'
 const GOTO_FIX_CSS = `
@@ -7,7 +8,9 @@ const GOTO_FIX_CSS = `
 }
 `
 
-export default defineAppSetup(() => {
+export default defineAppSetup(({ router }) => {
+  installSidebarPresenterSyncRouteBridge(router)
+
   if (typeof document === 'undefined')
     return
 

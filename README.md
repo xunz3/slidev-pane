@@ -9,6 +9,7 @@ PowerPoint-style pane presenter for Slidev.
 - Right side shows the active slide.
 - Lets you resize the thumbnail and notes panes. Sizes are restored on the next visit.
 - Lets you zoom the active slide with on-screen controls or `Ctrl/⌘ + mouse wheel`.
+- Syncs slide and click navigation with Slidev's presenter and normal views.
 - Keeps Slidev's built-in presenter mode intact.
 - Adds a `Pane` entry to Slidev's standard nav controls.
 - Adds a `p` shortcut to toggle this presenter mode.
