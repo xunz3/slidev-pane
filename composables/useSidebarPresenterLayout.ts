@@ -1,9 +1,9 @@
 import { ref } from 'vue'
 
-export const SIDEBAR_PRESENTER_DEFAULT_RAIL_WIDTH = 286
-export const SIDEBAR_PRESENTER_MIN_RAIL_WIDTH = 236
+export const SIDEBAR_PRESENTER_DEFAULT_RAIL_WIDTH = 252
+export const SIDEBAR_PRESENTER_MIN_RAIL_WIDTH = 228
 export const SIDEBAR_PRESENTER_MAX_RAIL_WIDTH = 480
-export const SIDEBAR_PRESENTER_MIN_NOTES_HEIGHT = 112
+export const SIDEBAR_PRESENTER_MIN_NOTES_HEIGHT = 88
 export const SIDEBAR_PRESENTER_MAX_NOTES_HEIGHT = 480
 
 const LAYOUT_STORAGE_KEY = 'slidev-pane:presenter-layout'
@@ -40,7 +40,7 @@ export function getNotesHeightMax() {
 }
 
 export function getDefaultNotesHeight() {
-  return Math.round(clampBetween(getViewportHeight() * 0.22, 144, 240))
+  return Math.round(clampBetween(getViewportHeight() * 0.095, 96, 136))
 }
 
 function normalizeRailWidth(value: number) {

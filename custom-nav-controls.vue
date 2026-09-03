@@ -9,8 +9,13 @@ const { enterSidebarPresenter } = useSidebarPresenterNav()
 
 <template>
   <IconButton v-if="!isEmbedded" title="Pane View" @click="enterSidebarPresenter">
-    <div class="text-[9px] font-semibold tracking-[0.06em] uppercase">
-      Pane
-    </div>
+    <div class="i-carbon:side-panel-open pane-entry" aria-hidden="true" />
   </IconButton>
 </template>
+
+<style scoped>
+.pane-entry {
+  width: 1rem;
+  height: 1rem;
+}
+</style>

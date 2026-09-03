@@ -8,7 +8,7 @@ import { useSidebarPresenterNav } from '../composables/useSidebarPresenterNav'
 
 const container = ref<HTMLDivElement>()
 const input = ref<HTMLInputElement>()
-const list = ref<HTMLUListElement>()
+const list = ref<HTMLDivElement>()
 const items = ref<HTMLLIElement[]>()
 const text = ref('')
 const selectedIndex = ref(0)
@@ -43,27 +43,32 @@ function close() {
 
 function goTo() {
   if (valid.value) {
-    const item = result.value.at(selectedIndex.value || 0)
+    const item = result.value[selectedIndex.value]
     if (item)
       goSidebar(item.no)
   }
   close()
 }
 
-function focusDown(event: Event) {
-  event.preventDefault()
-  selectedIndex.value++
-  if (selectedIndex.value >= result.value.length)
+function moveSelection(direction: -1 | 1) {
+  const count = result.value.length
+  if (!count) {
     selectedIndex.value = 0
+    return
+  }
+
+  selectedIndex.value = (selectedIndex.value + direction + count) % count
   scroll()
 }
 
-function focusUp(event: Event) {
+function focusDown(event: KeyboardEvent) {
   event.preventDefault()
-  selectedIndex.value--
-  if (selectedIndex.value <= -2)
-    selectedIndex.value = result.value.length - 1
-  scroll()
+  moveSelection(1)
+}
+
+function focusUp(event: KeyboardEvent) {
+  event.preventDefault()
+  moveSelection(-1)
 }
 
 function scroll() {
@@ -115,68 +120,246 @@ watch(activeElement, () => {
   <div
     id="slidev-goto-dialog"
     ref="container"
-    class="fixed right-5 transition-all"
-    w-90 max-w-90 min-w-90
-    :class="showGotoDialog ? 'top-5' : '-top-20'"
+    class="pane-goto"
+    :class="{ 'is-open': showGotoDialog }"
+    role="dialog"
+    aria-label="Go to slide"
+    :aria-hidden="!showGotoDialog"
   >
-    <div
-      class="bg-main transform"
-      shadow="~"
-      p="x-4 y-2"
-      border="~ transparent rounded dark:main"
-    >
-      <input
-        id="slidev-goto-input"
-        ref="input"
-        :value="text"
-        type="text"
-        :disabled="!showGotoDialog"
-        class="outline-none bg-transparent"
-        placeholder="Goto..."
-        :class="{ 'text-red-400': !valid && text }"
-        @keydown.enter="goTo"
-        @keydown.escape="close"
-        @keydown.down="focusDown"
-        @keydown.up="focusUp"
-        @input="updateText"
-      >
+    <div class="pane-goto__field">
+      <label for="slidev-goto-input">Go to slide</label>
+      <div class="pane-goto__input-line" :class="{ 'is-invalid': !valid && text }">
+        <input
+          id="slidev-goto-input"
+          ref="input"
+          :value="text"
+          type="text"
+          :disabled="!showGotoDialog"
+          :aria-invalid="Boolean(!valid && text)"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Number or title"
+          @keydown.enter="goTo"
+          @keydown.escape="close"
+          @keydown.down="focusDown"
+          @keydown.up="focusUp"
+          @input="updateText"
+        >
+      </div>
     </div>
     <div
       v-if="result.length > 0"
       ref="list"
-      class="autocomplete-list"
-      shadow="~"
-      border="~ transparent rounded dark:main"
+      class="pane-goto__results"
     >
-      <ul table w-full border-collapse>
+      <ul>
         <li
           v-for="(item, index) of result"
           ref="items"
           :key="item.id"
-          role="button"
-          tabindex="0"
-          cursor-pointer
-          hover="op100"
-          table-row
-          items-center
-          :border="index === 0 ? undefined : 't main'"
-          :class="selectedIndex === index ? 'bg-active op100' : 'op80'"
-          @click.stop.prevent="select(item.no)"
+          :class="{ 'is-selected': selectedIndex === index }"
         >
-          <div text-right op50 text-sm table-cell py-2 pl-4 pr-3 vertical-middle>
-            {{ item.no }}
-          </div>
-          <TitleRenderer table-cell py-2 pr-4 w-full :no="item.no" />
+          <button
+            type="button"
+            @focus="selectedIndex = index"
+            @click.stop.prevent="select(item.no)"
+          >
+            <span>{{ String(item.no).padStart(2, '0') }}</span>
+            <TitleRenderer :no="item.no" />
+          </button>
         </li>
       </ul>
     </div>
+    <p v-else-if="text" class="pane-goto__empty">
+      No slide matches “{{ text }}”
+    </p>
   </div>
 </template>
 
 <style scoped>
-.autocomplete-list {
-  --uno: bg-main mt-1;
+.pane-goto {
+  --goto-paper: #f8f9f6;
+  --goto-ink: #202925;
+  --goto-soft: #68736e;
+  --goto-faint: #919a95;
+  --goto-line: rgba(32, 41, 37, 0.1);
+  --goto-line-strong: rgba(32, 41, 37, 0.19);
+  --goto-sage: #6f8980;
+  --goto-sage-soft: rgba(111, 137, 128, 0.1);
+  --goto-danger: #9b625b;
+  --goto-sans: Inter, "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  position: fixed;
+  z-index: var(--slidev-z-index-modal, 100);
+  top: 1rem;
+  right: 1.1rem;
+  width: min(22rem, calc(100vw - 2.2rem));
+  border: 1px solid var(--goto-line-strong);
+  background: var(--goto-paper);
+  color: var(--goto-ink);
+  font-family: var(--goto-sans);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  visibility: hidden;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms;
+}
+
+.pane-goto.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+:global(html.dark .pane-goto) {
+  --goto-paper: #222a27;
+  --goto-ink: #e8ece9;
+  --goto-soft: #a7b0ab;
+  --goto-faint: #737d77;
+  --goto-line: rgba(232, 236, 233, 0.1);
+  --goto-line-strong: rgba(232, 236, 233, 0.19);
+  --goto-sage: #92aba2;
+  --goto-sage-soft: rgba(146, 171, 162, 0.1);
+  --goto-danger: #c38c82;
+}
+
+.pane-goto__field {
+  padding: 0.9rem 1rem 0.8rem;
+}
+
+.pane-goto__field label {
+  display: block;
+  margin: 0 0 0.6rem;
+  color: var(--goto-soft);
+  font-size: 0.58rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pane-goto__input-line {
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--goto-line-strong);
+  transition: border-color 140ms ease;
+}
+
+.pane-goto__input-line:focus-within {
+  border-color: var(--goto-sage);
+}
+
+.pane-goto__input-line.is-invalid {
+  border-color: var(--goto-danger);
+}
+
+.pane-goto__input-line input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--goto-ink);
+  font-family: var(--goto-sans);
+  font-size: 1rem;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+}
+
+.pane-goto__input-line input::placeholder {
+  color: var(--goto-faint);
+  opacity: 1;
+}
+
+.pane-goto__results {
   overflow: auto;
-  max-height: calc(100vh - 100px);
+  max-height: min(25rem, calc(100vh - 9.5rem));
+  border-top: 1px solid var(--goto-line);
+  scrollbar-color: var(--goto-line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.pane-goto__results ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pane-goto__results li {
+  position: relative;
+}
+
+.pane-goto__results li::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: transparent;
+  content: "";
+}
+
+.pane-goto__results li.is-selected {
+  background: var(--goto-sage-soft);
+}
+
+.pane-goto__results li.is-selected::before {
+  background: var(--goto-sage);
+}
+
+.pane-goto__results button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.62rem 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--goto-ink);
+  text-align: left;
+}
+
+.pane-goto__results button:focus-visible {
+  outline: 1px solid var(--goto-sage);
+  outline-offset: -2px;
+}
+
+.pane-goto__results button > span {
+  color: var(--goto-faint);
+  font-size: 0.56rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.pane-goto__results button :deep(*) {
+  overflow: hidden;
+  font-family: var(--goto-sans);
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-goto__empty {
+  margin: 0;
+  padding: 0.75rem 1rem 0.85rem;
+  border-top: 1px solid var(--goto-line);
+  color: var(--goto-danger);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 640px) {
+  .pane-goto {
+    top: 0.75rem;
+    right: 0.75rem;
+    width: calc(100vw - 1.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-goto,
+  .pane-goto__input-line {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

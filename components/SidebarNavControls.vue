@@ -9,7 +9,6 @@ import { downloadPDF } from '@slidev/client/utils.ts'
 import IconButton from '@slidev/client/internals/IconButton.vue'
 import MenuButton from '@slidev/client/internals/MenuButton.vue'
 import Settings from '@slidev/client/internals/Settings.vue'
-import VerticalDivider from '@slidev/client/internals/VerticalDivider.vue'
 import { useSidebarPresenterNav } from '../composables/useSidebarPresenterNav'
 
 const {
@@ -40,11 +39,15 @@ function onMouseLeave() {
 }
 
 const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : '')
+
+function formatSlideNo(no: number) {
+  return String(no).padStart(2, '0')
+}
 </script>
 
 <template>
   <div
-    class="fixed left-0 bottom-0 z-[45] p-3 transition duration-300 opacity-0 hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100"
+    class="pane-nav-dock"
     :class="wrapperClass"
   >
     <nav
@@ -52,83 +55,47 @@ const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : ''
       class="pane-nav"
       @mouseleave="onMouseLeave"
     >
-      <IconButton v-if="!isEmbedded" :title="isFullscreen ? 'Close fullscreen' : 'Enter fullscreen'" @click="toggleFullscreen">
-        <div v-if="isFullscreen" class="i-carbon:minimize" />
-        <div v-else class="i-carbon:maximize" />
-      </IconButton>
-      <IconButton :class="{ disabled: !hasPrev }" title="Go to previous slide" @click="prevSidebar">
+      <IconButton
+        :class="{ disabled: !hasPrev }"
+        :disabled="!hasPrev"
+        :aria-disabled="!hasPrev"
+        title="Go to previous slide"
+        @click="prevSidebar"
+      >
         <div class="i-carbon:arrow-left" />
       </IconButton>
-      <IconButton :class="{ disabled: !hasNext }" title="Go to next slide" @click="nextSidebar">
+      <IconButton
+        :class="{ disabled: !hasNext }"
+        :disabled="!hasNext"
+        :aria-disabled="!hasNext"
+        title="Go to next slide"
+        @click="nextSidebar"
+      >
         <div class="i-carbon:arrow-right" />
       </IconButton>
-      <IconButton v-if="!isEmbedded" title="Show slide overview" @click="toggleOverview()">
-        <div class="i-carbon:apps" />
-      </IconButton>
-      <IconButton
-        v-if="!isColorSchemaConfigured"
-        :title="isDark ? 'Switch to light mode theme' : 'Switch to dark mode theme'"
-        @click="toggleDark()"
-      >
-        <carbon-moon v-if="isDark" />
-        <carbon-sun v-else />
-      </IconButton>
-
-      <VerticalDivider />
-
-      <template v-if="__SLIDEV_FEATURE_DRAWINGS__ && !isEmbedded">
-        <IconButton class="relative" :title="drawingEnabled ? 'Hide drawing toolbar' : 'Show drawing toolbar'" @click="drawingEnabled = !drawingEnabled">
+      <template v-if="!isEmbedded">
+        <IconButton
+          :title="isFullscreen ? 'Exit full screen' : 'Enter full screen'"
+          :aria-pressed="isFullscreen"
+          @click="toggleFullscreen"
+        >
+          <div v-if="isFullscreen" class="i-carbon:minimize" />
+          <div v-else class="i-carbon:maximize" />
+        </IconButton>
+        <IconButton
+          v-if="__SLIDEV_FEATURE_DRAWINGS__"
+          class="relative"
+          :title="drawingEnabled ? 'Hide drawing toolbar' : 'Show drawing toolbar'"
+          :aria-pressed="drawingEnabled"
+          @click="drawingEnabled = !drawingEnabled"
+        >
           <div class="i-carbon:pen" />
           <div
             v-if="drawingEnabled"
-            class="absolute left-1 right-1 bottom-0 h-0.7 rounded-full"
+            class="pane-nav__brush"
             :style="{ background: brush.color }"
           />
         </IconButton>
-        <VerticalDivider />
-      </template>
-
-      <template v-if="!isEmbedded">
-        <IconButton title="Classic Presenter" @click="enterClassicPresenter">
-          <div class="i-carbon:user-speaker" />
-        </IconButton>
-        <IconButton title="Play Mode" @click="exitSidebarPresenter">
-          <div class="i-carbon:presentation-file" />
-        </IconButton>
-
-        <IconButton
-          v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
-          :title="showEditor ? 'Hide editor' : 'Show editor'"
-          class="lt-md:hidden"
-          @click="showEditor = !showEditor"
-        >
-          <div class="i-carbon:text-annotation-toggle" />
-        </IconButton>
-      </template>
-
-      <template v-if="!__DEV__">
-        <IconButton v-if="configs.download" title="Download as PDF" @click="downloadPDF">
-          <div class="i-carbon:download" />
-        </IconButton>
-      </template>
-
-      <template v-if="__SLIDEV_FEATURE_BROWSER_EXPORTER__ && !isEmbedded">
-        <IconButton title="Browser Exporter" to="/export">
-          <div class="i-carbon:document-pdf" />
-        </IconButton>
-      </template>
-
-      <IconButton
-        v-if="configs.info && !isEmbedded"
-        title="Show info"
-        @click="showInfoDialog = !showInfoDialog"
-      >
-        <div class="i-carbon:information" />
-      </IconButton>
-
-      <template v-if="!isEmbedded">
-        <VerticalDivider />
-
         <MenuButton>
           <template #button>
             <IconButton title="More Options">
@@ -137,94 +104,206 @@ const wrapperClass = computed(() => isDrawing.value ? 'pointer-events-none' : ''
             </IconButton>
           </template>
           <template #menu>
+            <div class="pane-nav__menu-icons" aria-label="Presenter tools">
+              <IconButton title="Show slide overview" @click="toggleOverview()">
+                <div class="i-carbon:apps" />
+              </IconButton>
+              <IconButton
+                v-if="!isColorSchemaConfigured"
+                :title="isDark ? 'Switch to light mode theme' : 'Switch to dark mode theme'"
+                @click="toggleDark()"
+              >
+                <carbon-moon v-if="isDark" />
+                <carbon-sun v-else />
+              </IconButton>
+              <IconButton title="Classic presenter" @click="enterClassicPresenter">
+                <div class="i-carbon:user-speaker" />
+              </IconButton>
+              <IconButton title="Play mode" @click="exitSidebarPresenter">
+                <div class="i-carbon:presentation-file" />
+              </IconButton>
+              <IconButton
+                v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+                :title="showEditor ? 'Hide editor' : 'Show editor'"
+                @click="showEditor = !showEditor"
+              >
+                <div class="i-carbon:text-annotation-toggle" />
+              </IconButton>
+              <IconButton v-if="!__DEV__ && configs.download" title="Download as PDF" @click="downloadPDF">
+                <div class="i-carbon:download" />
+              </IconButton>
+              <IconButton v-if="__SLIDEV_FEATURE_BROWSER_EXPORTER__" title="Browser exporter" to="/export">
+                <div class="i-carbon:document-pdf" />
+              </IconButton>
+              <IconButton
+                v-if="configs.info"
+                title="Show info"
+                @click="showInfoDialog = !showInfoDialog"
+              >
+                <div class="i-carbon:information" />
+              </IconButton>
+            </div>
             <Settings />
           </template>
         </MenuButton>
       </template>
 
-      <VerticalDivider v-if="!isEmbedded" />
-
-      <div class="pane-nav__counter">
-        <div>
-          {{ currentSlideNo }}
-          <span class="opacity-50">/ {{ total }}</span>
-        </div>
+      <div class="pane-nav__counter" :aria-label="`Slide ${currentSlideNo} of ${total}`">
+        <strong>{{ formatSlideNo(currentSlideNo) }}</strong>
+        <span>/ {{ formatSlideNo(total) }}</span>
       </div>
     </nav>
   </div>
 </template>
 
 <style scoped>
+.pane-nav-dock {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(32, 41, 37, 0.1);
+}
+
 .pane-nav {
-  --pane-nav-border: rgba(17, 17, 17, 0.08);
-  --pane-nav-bg: rgba(255, 255, 255, 0.78);
-  --pane-nav-hover: rgba(17, 17, 17, 0.05);
-  --pane-nav-ink: rgba(17, 17, 17, 0.82);
-  --pane-nav-counter: rgba(17, 17, 17, 0.62);
+  --pane-nav-border: rgba(32, 41, 37, 0.1);
+  --pane-nav-border-strong: rgba(32, 41, 37, 0.19);
+  --pane-nav-bg: #e9ece9;
+  --pane-nav-hover: rgba(111, 137, 128, 0.1);
+  --pane-nav-ink: #34403b;
+  --pane-nav-soft: #7d8883;
+  --pane-nav-sage: #6f8980;
+  --pane-nav-sans: Inter, "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
   display: flex;
-  flex-wrap: wrap-reverse;
+  width: 100%;
+  min-height: 2.7rem;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.32rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid var(--pane-nav-border);
+  gap: 0.08rem;
+  padding: 0 0.55rem;
+  border: 0;
   background: var(--pane-nav-bg);
-  box-shadow: 0 14px 32px rgba(17, 17, 17, 0.12);
-  backdrop-filter: blur(18px);
   color: var(--pane-nav-ink);
+  font-family: var(--pane-nav-sans);
 }
 
 .pane-nav :deep(.slidev-icon-btn) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.95rem;
-  min-width: 1.95rem;
-  height: 1.95rem;
-  border-radius: 999px;
-  font-size: 0.95rem;
+  width: 1.8rem;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0;
+  font-size: 0.8rem;
   color: inherit;
-  opacity: 0.9;
-  transition:
-    background-color 150ms ease,
-    transform 150ms ease,
-    opacity 150ms ease,
-    color 150ms ease;
+  opacity: 0.72;
+  transition: background-color 180ms ease, opacity 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
 .pane-nav :deep(.slidev-icon-btn:hover) {
-  transform: translateY(-1px);
   background: var(--pane-nav-hover);
   opacity: 1;
+  transform: translateY(-1px);
+}
+
+.pane-nav :deep(.slidev-icon-btn:focus-visible) {
+  outline: 1px solid var(--pane-nav-sage);
+  outline-offset: -1px;
 }
 
 .pane-nav :deep(.slidev-icon-btn.disabled) {
   opacity: 0.32;
 }
 
-.pane-nav :deep(.w-1px) {
-  height: 1rem;
-  margin: 0 0.2rem;
-  opacity: 0.12;
+.pane-nav__menu-icons {
+  display: grid;
+  grid-template-columns: repeat(5, 1.9rem);
+  gap: 0.15rem;
+  padding: 0.4rem;
+  border-bottom: 1px solid var(--pane-nav-border);
+}
+
+.pane-nav :deep(.flex.relative > .bg-main.text-main) {
+  border-color: var(--pane-nav-border-strong) !important;
+  border-radius: 0 !important;
+  background: var(--pane-nav-bg) !important;
+  box-shadow: none !important;
+}
+
+.pane-nav__menu-icons :deep(.slidev-icon-btn) {
+  position: relative;
+  display: inline-flex;
+  width: 1.9rem;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  color: inherit;
+  font-size: 0.86rem;
+}
+
+.pane-nav__menu-icons :deep(.slidev-icon-btn:hover) {
+  background: var(--pane-nav-hover);
+}
+
+.pane-nav__brush {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.25rem;
+  left: 0.35rem;
+  height: 1px;
 }
 
 .pane-nav__counter {
   display: flex;
+  margin-left: auto;
   align-items: center;
-  height: 1.95rem;
-  padding: 0 0.45rem 0 0.25rem;
-  font-size: 0.76rem;
+  gap: 0.3rem;
+  height: 1.8rem;
+  padding-left: 0.45rem;
+  color: var(--pane-nav-soft);
+  font-size: 0.56rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
   line-height: 1;
-  letter-spacing: 0.01em;
-  color: var(--pane-nav-counter);
+  text-transform: uppercase;
 }
 
-:global(html.dark) .pane-nav {
-  --pane-nav-border: rgba(255, 255, 255, 0.08);
-  --pane-nav-bg: rgba(20, 20, 21, 0.78);
-  --pane-nav-hover: rgba(255, 255, 255, 0.08);
-  --pane-nav-ink: rgba(245, 245, 245, 0.88);
-  --pane-nav-counter: rgba(245, 245, 245, 0.68);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
+.pane-nav__counter strong {
+  color: var(--pane-nav-ink);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+:global(html.dark .pane-nav) {
+  --pane-nav-border: rgba(232, 236, 233, 0.1);
+  --pane-nav-border-strong: rgba(232, 236, 233, 0.19);
+  --pane-nav-bg: #171e1c;
+  --pane-nav-hover: rgba(146, 171, 162, 0.1);
+  --pane-nav-ink: #e3e8e5;
+  --pane-nav-soft: #9ca7a1;
+  --pane-nav-sage: #92aba2;
+}
+
+:global(html.dark .pane-nav-dock) {
+  border-top-color: rgba(232, 236, 233, 0.1);
+}
+
+:global(html.dark .pane-nav__menu-icons) {
+  border-bottom-color: rgba(232, 236, 233, 0.1);
+}
+
+@media (max-width: 640px) {
+  .pane-nav {
+    min-height: 2.4rem;
+    padding: 0 0.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-nav-dock,
+  .pane-nav :deep(.slidev-icon-btn) {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

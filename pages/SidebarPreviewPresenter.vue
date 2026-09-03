@@ -63,9 +63,13 @@ const {
   goSidebar,
 } = useSidebarPresenterNav()
 const {
+  canZoomIn,
+  canZoomOut,
   getWheelZoomTarget,
+  resetSlideZoom,
   setSlideZoom,
   slideZoom,
+  zoomPercentage,
 } = useSidebarPresenterZoom()
 const {
   constrainPresenterLayout,
@@ -80,12 +84,11 @@ const {
 
 useHead({ title: slidesTitle })
 
-const presenterTitle = computed(() => slidesTitle.replace(/\s+-\s+Slidev$/, ''))
-const defaultThumbWidth = 208
+const defaultThumbWidth = 124
 const thumbOverscan = 4
-const sectionHeaderHeight = 44
-const thumbViewportPaddingTop = 14
-const thumbViewportPaddingBottom = 16
+const sectionHeaderHeight = 36
+const thumbViewportPaddingTop = 10
+const thumbViewportPaddingBottom = 20
 const thumbScrollTop = ref(0)
 const thumbViewportHeight = ref(0)
 const isCompactLayout = ref(false)
@@ -139,16 +142,23 @@ function getThumbnailClicks(route: SlideRoute) {
 }
 
 const progressWidth = computed(() => {
-  if (total.value <= 1)
-    return '100%'
-  return `${((currentSlideNo.value - 1) / (total.value - 1)) * 100 + 1}%`
+  if (!total.value)
+    return '0%'
+  return `${Math.min(100, (currentSlideNo.value / total.value) * 100)}%`
 })
+const currentClicksTotal = computed(() => currentSlideRoute.value
+  ? getPrimaryClicks(currentSlideRoute.value).total
+  : 0)
+
+function formatSlideNo(no: number) {
+  return String(no).padStart(2, '0')
+}
 
 const thumbWidth = computed(() => isCompactLayout.value
   ? defaultThumbWidth
-  : Math.round(clampBetween(railWidth.value - 78, 176, 360)))
+  : Math.round(clampBetween(railWidth.value - 60, 176, 360)))
 const thumbFrameHeight = computed(() => Math.ceil(thumbWidth.value / slideAspect.value))
-const thumbRowHeight = computed(() => thumbFrameHeight.value + 64)
+const thumbRowHeight = computed(() => thumbFrameHeight.value + 54)
 const presenterStyle = computed(() => ({
   '--sidebar-notes-height': `${notesHeight.value}px`,
   '--sidebar-rail-width': `${railWidth.value}px`,
@@ -467,6 +477,15 @@ function focusCanvasZoom(nextZoom: number, offsetX?: number, offsetY?: number) {
   })
 }
 
+function zoomCanvas(direction: -1 | 1) {
+  focusCanvasZoom(slideZoom.value + direction * SIDEBAR_PRESENTER_ZOOM_STEP)
+}
+
+function resetCanvasZoom() {
+  resetSlideZoom()
+  nextTick(() => canvasViewport.value?.scrollTo({ left: 0, top: 0 }))
+}
+
 function toggleNotesCollapsed() {
   notesCollapsed.value = !notesCollapsed.value
   if (notesCollapsed.value)
@@ -505,6 +524,7 @@ function updateCompactLayout() {
 
   isCompactLayout.value = window.innerWidth <= 960
   constrainPresenterLayout()
+  nextTick(() => ensureCurrentThumbVisible(currentSlideNo.value))
 }
 
 function measureThumbViewport() {
@@ -518,8 +538,26 @@ function handleThumbScroll() {
 function ensureCurrentThumbVisible(no: number) {
   const viewport = thumbViewport.value
 
-  if (!viewport || isCompactLayout.value)
+  if (!viewport)
     return
+
+  if (isCompactLayout.value) {
+    const currentThumb = viewport.querySelector<HTMLElement>(`[data-slide-no="${no}"]`)
+    if (!currentThumb)
+      return
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const thumbRect = currentThumb.getBoundingClientRect()
+    const leftEdge = viewport.scrollLeft + thumbRect.left - viewportRect.left
+    const rightEdge = leftEdge + thumbRect.width
+
+    if (leftEdge < viewport.scrollLeft)
+      viewport.scrollTo({ left: leftEdge })
+    else if (rightEdge > viewport.scrollLeft + viewport.clientWidth)
+      viewport.scrollTo({ left: rightEdge - viewport.clientWidth })
+
+    return
+  }
 
   const currentItem = thumbnailLayout.value.items.find(item =>
     item.kind === 'slide' && item.route.no === no,
@@ -598,12 +636,10 @@ onBeforeUnmount(() => {
     :style="presenterStyle"
   >
     <aside class="sidebar-presenter__rail">
-      <div class="sidebar-presenter__rail-head">
-        <h1 class="sidebar-presenter__heading">
-          {{ presenterTitle }}
-        </h1>
-      </div>
-
+      <header class="sidebar-presenter__rail-head">
+        <p>Navigator</p>
+        <span>{{ formatSlideNo(total) }} slides</span>
+      </header>
       <div
         ref="thumbViewport"
         class="sidebar-presenter__thumbs"
@@ -646,10 +682,11 @@ onBeforeUnmount(() => {
               class="sidebar-presenter__thumb"
               :class="{ 'is-active': item.route.no === currentSlideNo }"
               :data-slide-no="item.route.no"
+              :aria-current="item.route.no === currentSlideNo ? 'page' : undefined"
               @click="goSidebar(item.route.no)"
             >
               <div class="sidebar-presenter__thumb-meta">
-                <span>{{ item.route.no }}</span>
+                <span class="sidebar-presenter__thumb-number">{{ formatSlideNo(item.route.no) }}</span>
                 <span class="sidebar-presenter__thumb-title">
                   {{ getSlideTitle(item.route) }}
                 </span>
@@ -672,6 +709,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <SidebarNavControls />
     </aside>
 
     <div
@@ -697,6 +735,36 @@ onBeforeUnmount(() => {
           ref="canvasSurface"
           class="sidebar-presenter__canvas-surface"
         >
+          <div class="sidebar-presenter__zoom" role="group" aria-label="Slide zoom">
+            <button
+              type="button"
+              :disabled="!canZoomOut"
+              title="Zoom out"
+              aria-label="Zoom out"
+              @click="zoomCanvas(-1)"
+            >
+              <span aria-hidden="true">−</span>
+            </button>
+            <button
+              type="button"
+              class="sidebar-presenter__zoom-value"
+              :class="{ 'is-default': slideZoom === SIDEBAR_PRESENTER_DEFAULT_ZOOM }"
+              title="Reset zoom"
+              aria-label="Reset slide zoom"
+              @click="resetCanvasZoom"
+            >
+              {{ zoomPercentage }}
+            </button>
+            <button
+              type="button"
+              :disabled="!canZoomIn"
+              title="Zoom in"
+              aria-label="Zoom in"
+              @click="zoomCanvas(1)"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+          </div>
           <div
             ref="canvasBounds"
             class="sidebar-presenter__canvas-bounds"
@@ -724,6 +792,7 @@ onBeforeUnmount(() => {
         </div>
 
         <ClicksSlider
+          v-if="currentClicksTotal > 0"
           :key="currentSlideRoute?.no"
           :clicks-context="getPrimaryClicks(currentSlideRoute)"
           class="sidebar-presenter__clicks"
@@ -749,10 +818,22 @@ onBeforeUnmount(() => {
           <span />
         </div>
         <div class="sidebar-presenter__notes-head">
-          <p class="sidebar-presenter__eyebrow">
-            Notes
-          </p>
+          <div class="sidebar-presenter__notes-title">
+            <p class="sidebar-presenter__eyebrow">
+              Notes
+            </p>
+            <span>Slide {{ formatSlideNo(currentSlideNo) }}</span>
+          </div>
           <div class="sidebar-presenter__notes-actions">
+            <button
+              v-if="__DEV__ && !notesCollapsed"
+              type="button"
+              class="sidebar-presenter__toggle"
+              :aria-pressed="notesEditing"
+              @click="notesEditing = !notesEditing"
+            >
+              {{ notesEditing ? 'Done' : 'Edit' }}
+            </button>
             <button
               type="button"
               class="sidebar-presenter__notes-toggle"
@@ -762,15 +843,6 @@ onBeforeUnmount(() => {
               @click="toggleNotesCollapsed"
             >
               <div :class="notesCollapsed ? 'i-carbon:chevron-up' : 'i-carbon:chevron-down'" />
-            </button>
-            <button
-              v-if="__DEV__ && !notesCollapsed"
-              type="button"
-              class="sidebar-presenter__toggle sidebar-presenter__toggle--soft sidebar-presenter__toggle--compact"
-              :aria-pressed="notesEditing"
-              @click="notesEditing = !notesEditing"
-            >
-              {{ notesEditing ? 'Done' : 'Edit Notes' }}
             </button>
           </div>
         </div>
@@ -793,13 +865,19 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <div class="sidebar-presenter__progress">
-        <div class="sidebar-presenter__progress-bar" :style="{ width: progressWidth }"></div>
+      <div
+        class="sidebar-presenter__progress"
+        role="progressbar"
+        aria-label="Presentation progress"
+        aria-valuemin="1"
+        :aria-valuemax="total"
+        :aria-valuenow="currentSlideNo"
+      >
+        <div class="sidebar-presenter__progress-bar" :style="{ width: progressWidth }" />
       </div>
     </main>
   </div>
 
-  <SidebarNavControls />
   <SidebarGoto />
   <SidebarQuickOverview />
   <ContextMenu />
@@ -808,32 +886,43 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sidebar-presenter {
-  --sidebar-surface: rgba(255, 255, 255, 0.92);
-  --sidebar-surface-strong: rgba(255, 255, 255, 0.98);
-  --sidebar-head-bg: rgba(255, 255, 255, 0.66);
-  --sidebar-border: rgba(17, 17, 17, 0.08);
-  --sidebar-border-strong: rgba(17, 17, 17, 0.16);
-  --sidebar-shadow: 0 18px 40px rgba(17, 17, 17, 0.08);
-  --sidebar-ink: #111111;
-  --sidebar-ink-soft: rgba(17, 17, 17, 0.58);
-  --sidebar-accent: #111111;
-  --sidebar-rail-bg: rgba(250, 250, 250, 0.92);
-  --sidebar-soft-button-bg: rgba(245, 245, 245, 0.92);
-  --sidebar-thumb-hover: rgba(17, 17, 17, 0.035);
-  --sidebar-thumb-frame-bg: #ffffff;
-  --sidebar-notes-bg: rgba(250, 250, 250, 0.92);
-  --sidebar-notes-display-bg: rgba(255, 255, 255, 0.82);
-  --sidebar-progress-track: rgba(17, 17, 17, 0.08);
-  --sidebar-progress-fill: linear-gradient(90deg, #111111, #3a3a3a);
-  --sidebar-scrollbar-track: rgba(17, 17, 17, 0.05);
-  --sidebar-scrollbar-thumb: rgba(17, 17, 17, 0.18);
-  --sidebar-scrollbar-thumb-hover: rgba(17, 17, 17, 0.28);
+  --pane-paper: #f1f3f0;
+  --pane-rail: #e9ece9;
+  --pane-stage: #f6f7f4;
+  --pane-sheet: #fdfdfa;
+  --pane-ink: #202925;
+  --pane-ink-soft: #68736e;
+  --pane-ink-faint: #919a95;
+  --pane-line: rgba(32, 41, 37, 0.1);
+  --pane-line-strong: rgba(32, 41, 37, 0.19);
+  --pane-sage: #6f8980;
+  --pane-sage-soft: rgba(111, 137, 128, 0.1);
+  --pane-scrollbar: rgba(32, 41, 37, 0.16);
+  --pane-scrollbar-hover: rgba(32, 41, 37, 0.29);
+  --pane-font-sans: Inter, "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
   --sidebar-thumb-row-height: 180px;
   display: grid;
-  grid-template-columns: var(--sidebar-rail-width, 286px) 7px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-rail-width, 252px) 7px minmax(0, 1fr);
   height: 100vh;
-  background: linear-gradient(180deg, #ffffff 0%, #f6f6f7 100%);
-  color: var(--sidebar-ink);
+  overflow: hidden;
+  background: var(--pane-paper);
+  color: var(--pane-ink);
+  font-family: var(--pane-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sidebar-presenter,
+.sidebar-presenter * {
+  box-sizing: border-box;
+}
+
+.sidebar-presenter button {
+  font: inherit;
+}
+
+.sidebar-presenter button:focus-visible {
+  outline: 1px solid var(--pane-sage);
+  outline-offset: 2px;
 }
 
 .sidebar-presenter.is-resizing {
@@ -841,35 +930,69 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter.is-dark {
-  --sidebar-surface: rgba(20, 20, 21, 0.94);
-  --sidebar-surface-strong: rgba(28, 28, 30, 0.98);
-  --sidebar-head-bg: rgba(20, 20, 21, 0.74);
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-border-strong: rgba(255, 255, 255, 0.16);
-  --sidebar-shadow: 0 24px 56px rgba(0, 0, 0, 0.32);
-  --sidebar-ink: #f5f5f5;
-  --sidebar-ink-soft: rgba(245, 245, 245, 0.6);
-  --sidebar-accent: #f5f5f5;
-  --sidebar-rail-bg: rgba(16, 16, 17, 0.94);
-  --sidebar-soft-button-bg: rgba(34, 34, 36, 0.92);
-  --sidebar-thumb-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-thumb-frame-bg: rgba(10, 10, 11, 0.92);
-  --sidebar-notes-bg: rgba(20, 20, 21, 0.94);
-  --sidebar-notes-display-bg: rgba(14, 14, 15, 0.84);
-  --sidebar-progress-track: rgba(255, 255, 255, 0.12);
-  --sidebar-progress-fill: linear-gradient(90deg, #f5f5f5, #8d8d93);
-  --sidebar-scrollbar-track: rgba(255, 255, 255, 0.05);
-  --sidebar-scrollbar-thumb: rgba(255, 255, 255, 0.18);
-  --sidebar-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
-  background: linear-gradient(180deg, #0d0d0e 0%, #141416 100%);
+  --pane-paper: #1b2220;
+  --pane-rail: #171e1c;
+  --pane-stage: #212826;
+  --pane-sheet: #28312e;
+  --pane-ink: #e8ece9;
+  --pane-ink-soft: #a7b0ab;
+  --pane-ink-faint: #737d77;
+  --pane-line: rgba(232, 236, 233, 0.1);
+  --pane-line-strong: rgba(232, 236, 233, 0.19);
+  --pane-sage: #92aba2;
+  --pane-sage-soft: rgba(146, 171, 162, 0.1);
+  --pane-scrollbar: rgba(232, 236, 233, 0.15);
+  --pane-scrollbar-hover: rgba(232, 236, 233, 0.28);
 }
 
 .sidebar-presenter__rail {
+  position: relative;
+  z-index: 5;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
-  background: var(--sidebar-rail-bg);
-  backdrop-filter: blur(18px);
+  overflow: visible;
+  border-right: 1px solid var(--pane-line-strong);
+  background: var(--pane-rail);
+}
+
+.sidebar-presenter__rail-head {
+  display: flex;
+  min-height: 2.7rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.9rem 0 1rem;
+  border-bottom: 1px solid var(--pane-line);
+}
+
+.sidebar-presenter__rail-head p,
+.sidebar-presenter__rail-head span {
+  margin: 0;
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.sidebar-presenter__rail-head p {
+  color: var(--pane-ink-soft);
+  font-weight: 650;
+}
+
+.sidebar-presenter__rail-head span {
+  color: var(--pane-ink-faint);
+}
+
+.sidebar-presenter__eyebrow {
+  margin: 0;
+  color: var(--pane-ink-soft);
+  font-size: 0.6rem;
+  font-weight: 650;
+  letter-spacing: 0.13em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .sidebar-presenter__rail-resizer {
@@ -879,112 +1002,39 @@ onBeforeUnmount(() => {
   min-width: 7px;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid var(--sidebar-border);
-  border-left: 1px solid var(--sidebar-border);
-  background: var(--sidebar-rail-bg);
+  background: var(--pane-paper);
   cursor: col-resize;
   touch-action: none;
 }
 
 .sidebar-presenter__rail-resizer span {
-  width: 2px;
+  width: 1px;
   height: 2.5rem;
-  border-radius: 999px;
-  background: var(--sidebar-border-strong);
+  background: var(--pane-line-strong);
   opacity: 0;
-  transition:
-    height 150ms ease,
-    opacity 150ms ease,
-    background-color 150ms ease;
+  transition: height 180ms ease, opacity 180ms ease, background-color 180ms ease;
 }
 
 .sidebar-presenter__rail-resizer:hover span,
 .sidebar-presenter__rail-resizer:focus-visible span,
 .sidebar-presenter.is-resizing .sidebar-presenter__rail-resizer span {
   height: 4rem;
-  background: var(--sidebar-ink-soft);
+  background: var(--pane-sage);
   opacity: 1;
 }
 
 .sidebar-presenter__rail-resizer:focus-visible,
 .sidebar-presenter__notes-resizer:focus-visible {
-  outline: 2px solid var(--sidebar-ink-soft);
-  outline-offset: -2px;
-}
-
-.sidebar-presenter__rail-head,
-.sidebar-presenter__main-head,
-.sidebar-presenter__notes-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.sidebar-presenter__rail-head {
-  padding: 0.85rem 0.95rem 0.8rem;
-  border-bottom: 1px solid var(--sidebar-border);
-}
-
-.sidebar-presenter__eyebrow {
-  margin: 0;
-  font-size: 0.68rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--sidebar-ink-soft);
-}
-
-.sidebar-presenter__heading,
-.sidebar-presenter__title {
-  margin: 0;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-
-.sidebar-presenter__heading {
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.sidebar-presenter__toggle {
-  border: 1px solid var(--sidebar-border);
-  border-radius: 999px;
-  background: var(--sidebar-accent);
-  color: #ffffff;
-  padding: 0.55rem 0.95rem;
-  font-size: 0.85rem;
-  transition:
-    transform 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease;
-}
-
-.sidebar-presenter__toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-  transform: none;
-}
-
-.sidebar-presenter__toggle:hover {
-  transform: translateY(-1px);
-}
-
-.sidebar-presenter__toggle--soft {
-  background: var(--sidebar-soft-button-bg);
-  color: var(--sidebar-ink);
-}
-
-.sidebar-presenter__toggle--compact {
-  padding: 0.42rem 0.78rem;
-  font-size: 0.77rem;
+  outline: 1px solid var(--pane-sage);
+  outline-offset: -1px;
 }
 
 .sidebar-presenter__thumbs {
   flex: 1;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 0 0.75rem 0 0.8rem;
+  scrollbar-color: var(--pane-scrollbar) transparent;
   scrollbar-width: thin;
-  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
 
 .sidebar-presenter__thumbs-spacer {
@@ -993,8 +1043,8 @@ onBeforeUnmount(() => {
 
 .sidebar-presenter__thumb-item {
   position: absolute;
-  left: 0;
   right: 0;
+  left: 0;
 }
 
 .sidebar-presenter__section {
@@ -1003,94 +1053,96 @@ onBeforeUnmount(() => {
   height: 36px;
   align-items: center;
   gap: 0.42rem;
-  padding: 0 0.52rem;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  padding: 0 0.2rem;
+  border: 0;
   background: transparent;
-  color: var(--sidebar-ink-soft);
+  color: var(--pane-ink-soft);
   text-align: left;
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease;
+  transition: color 180ms ease, opacity 180ms ease;
 }
 
 .sidebar-presenter__section:hover {
-  background: var(--sidebar-thumb-hover);
-  color: var(--sidebar-ink);
-}
-
-.sidebar-presenter__section.is-active {
-  color: var(--sidebar-ink);
+  color: var(--pane-ink);
 }
 
 .sidebar-presenter__section-chevron {
-  width: 0.85rem;
-  min-width: 0.85rem;
-  height: 0.85rem;
-  opacity: 0.72;
+  width: 0.62rem;
+  min-width: 0.62rem;
+  height: 0.62rem;
+  opacity: 0.55;
 }
 
 .sidebar-presenter__section-title {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: 0.61rem;
   font-weight: 650;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.1em;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .sidebar-presenter__section-count {
-  display: inline-flex;
-  min-width: 1.3rem;
-  height: 1.3rem;
-  align-items: center;
-  justify-content: center;
-  padding: 0 0.3rem;
-  border-radius: 999px;
-  background: var(--sidebar-thumb-hover);
-  font-size: 0.66rem;
+  min-width: 1.25rem;
+  color: var(--pane-ink-faint);
+  font-size: 0.58rem;
   font-variant-numeric: tabular-nums;
-  color: var(--sidebar-ink-soft);
+  text-align: right;
 }
 
 .sidebar-presenter__thumb {
+  position: relative;
   display: flex;
   width: 100%;
+  height: calc(var(--sidebar-thumb-row-height) - 4px);
   flex-direction: column;
-  gap: 0.6rem;
-  border: 1px solid transparent;
-  border-radius: 18px;
+  gap: 0.44rem;
+  margin: 0;
+  padding: 0.52rem 0.25rem 0.68rem 0.9rem;
+  border: 0;
   background: transparent;
-  height: calc(var(--sidebar-thumb-row-height) - 12px);
-  margin-bottom: 0.75rem;
-  padding: 0.55rem;
   text-align: left;
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    transform 150ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.sidebar-presenter__thumb::before {
+  position: absolute;
+  top: 0.55rem;
+  bottom: 0.7rem;
+  left: 0;
+  width: 2px;
+  background: var(--pane-sage);
+  content: "";
+  opacity: 0;
+  transform: scaleY(0.55);
+  transform-origin: center;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .sidebar-presenter__thumb:hover {
-  transform: translateY(-1px);
-  background: var(--sidebar-thumb-hover);
+  transform: translateX(1px);
 }
 
-.sidebar-presenter__thumb.is-active {
-  border-color: var(--sidebar-border-strong);
-  background: var(--sidebar-surface-strong);
-  box-shadow: var(--sidebar-shadow);
+.sidebar-presenter__thumb.is-active::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .sidebar-presenter__thumb-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
   align-items: baseline;
-  gap: 0.55rem;
-  font-size: 0.74rem;
-  color: var(--sidebar-ink-soft);
+  color: var(--pane-ink-soft);
+  font-size: 0.64rem;
+}
+
+.sidebar-presenter__thumb-number {
+  color: var(--pane-ink-faint);
+  font-size: 0.56rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 
 .sidebar-presenter__thumb-title {
@@ -1100,29 +1152,72 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__thumb-frame {
-  align-self: center;
+  align-self: flex-start;
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid var(--sidebar-border);
-  background: var(--sidebar-thumb-frame-bg);
+  border: 1px solid var(--pane-line);
+  background: var(--pane-sheet);
+  transition: border-color 180ms ease;
+}
+
+.sidebar-presenter__thumb:hover .sidebar-presenter__thumb-frame {
+  border-color: var(--pane-line-strong);
 }
 
 .sidebar-presenter__main {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
-  padding: 0.5rem 0.82rem 0;
-  gap: 0.5rem;
+  height: 100vh;
+  padding: 0.7rem 0.85rem 0;
+  overflow: hidden;
+  background: var(--pane-paper);
+}
+
+.sidebar-presenter__zoom {
+  position: absolute;
+  z-index: 3;
+  top: 0.34rem;
+  right: 0.38rem;
+  display: grid;
+  grid-template-columns: 1.75rem 3rem 1.75rem;
+  height: 1.85rem;
+  opacity: 0.66;
+  transition: opacity 180ms ease;
+}
+
+.sidebar-presenter__zoom button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--pane-ink-soft);
+  font-size: 0.82rem;
+  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.sidebar-presenter__zoom button:hover:not(:disabled) {
+  background: var(--pane-sage-soft);
+  color: var(--pane-ink);
+  transform: translateY(-1px);
+}
+
+.sidebar-presenter__zoom button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.sidebar-presenter__zoom .sidebar-presenter__zoom-value {
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .sidebar-presenter__canvas-wrap {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 16px;
-  background: var(--sidebar-surface);
-  box-shadow: var(--sidebar-shadow);
   overflow: hidden;
 }
 
@@ -1130,11 +1225,12 @@ onBeforeUnmount(() => {
   position: relative;
   height: 100%;
   min-height: 0;
+  background: var(--pane-stage);
 }
 
 .sidebar-presenter__canvas-bounds {
   position: absolute;
-  inset: 0.45rem 0.56rem 0.24rem;
+  inset: 2.25rem 0.4rem 0.4rem;
   overflow: hidden;
 }
 
@@ -1144,8 +1240,8 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-color: var(--pane-scrollbar) transparent;
   scrollbar-width: thin;
-  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
 
 .sidebar-presenter__canvas-stage {
@@ -1157,40 +1253,84 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__canvas {
+  outline: 1px solid var(--pane-line);
+  background: var(--pane-sheet);
   cursor: auto;
 }
 
 .sidebar-presenter__clicks {
-  padding: 0 0.62rem 0.56rem;
+  min-height: 1.35rem;
+  gap: 0.3rem !important;
+  padding: 0.12rem 0.1rem 0.08rem;
+  color: var(--pane-ink-faint);
+  font-family: var(--pane-font-sans);
+  font-size: 0.56rem;
+}
+
+.sidebar-presenter__clicks :deep(> div:first-child) {
+  min-width: 3.4rem !important;
+  gap: 0.15rem !important;
+  margin-right: 0.15rem !important;
+  font-family: var(--pane-font-sans) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-presenter__clicks :deep(> div:nth-child(2)) {
+  height: 0.78rem !important;
+  font-family: var(--pane-font-sans) !important;
+}
+
+.sidebar-presenter__clicks :deep(> div:nth-child(2) > div) {
+  overflow: visible !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--pane-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.sidebar-presenter__clicks :deep(> div:nth-child(2) > div > div:first-child) {
+  background: transparent !important;
+  opacity: 0 !important;
+}
+
+.sidebar-presenter__clicks :deep(> div:nth-child(2) > div > [class~="z-1"]) {
+  border: 0 !important;
+  border-bottom: 1px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--pane-ink-faint);
+  font-size: 0.53rem !important;
+  font-weight: 400 !important;
+}
+
+.sidebar-presenter__clicks :deep(.text-primary) {
+  border-bottom-color: var(--pane-sage) !important;
+  color: var(--pane-sage) !important;
 }
 
 .sidebar-presenter__notes {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: var(--sidebar-notes-height, clamp(9rem, 22vh, 15rem));
+  height: var(--sidebar-notes-height, clamp(7rem, 13vh, 10.5rem));
   min-height: 0;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 16px;
-  background: var(--sidebar-notes-bg);
-  margin-top: 0.5rem;
-  padding: 0.58rem 0.68rem 0.68rem;
+  margin-top: 0.65rem;
+  border-top: 1px solid var(--pane-line);
+  background: transparent;
 }
 
 .sidebar-presenter__notes.is-collapsed {
   grid-template-rows: auto;
-  height: auto;
-  padding-bottom: 0.58rem;
+  height: 2.35rem;
 }
 
 .sidebar-presenter__notes-resizer {
   position: absolute;
   z-index: 4;
-  top: -0.58rem;
-  right: 0.85rem;
-  left: 0.85rem;
+  top: -0.35rem;
+  right: 0;
+  left: 0;
   display: flex;
-  height: 0.58rem;
+  height: 0.7rem;
   align-items: center;
   justify-content: center;
   cursor: row-resize;
@@ -1198,58 +1338,100 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-presenter__notes-resizer span {
-  width: 2.6rem;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--sidebar-border-strong);
+  width: 2.25rem;
+  height: 1px;
+  background: var(--pane-line-strong);
   opacity: 0;
-  transition:
-    opacity 150ms ease,
-    width 150ms ease,
-    background-color 150ms ease;
+  transition: opacity 180ms ease, width 180ms ease, background-color 180ms ease;
 }
 
 .sidebar-presenter__notes-resizer:hover span,
 .sidebar-presenter__notes-resizer:focus-visible span,
 .sidebar-presenter.is-resizing .sidebar-presenter__notes-resizer span {
   width: 4rem;
-  background: var(--sidebar-ink-soft);
+  background: var(--pane-sage);
   opacity: 1;
+}
+
+.sidebar-presenter__notes-head {
+  display: flex;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sidebar-presenter__notes-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.sidebar-presenter__notes-title > span {
+  color: var(--pane-ink-faint);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
 }
 
 .sidebar-presenter__notes-actions {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
-.sidebar-presenter__notes-toggle {
+.sidebar-presenter__notes-toggle,
+.sidebar-presenter__toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.85rem;
-  min-width: 1.85rem;
-  height: 1.85rem;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 999px;
-  background: var(--sidebar-soft-button-bg);
-  color: var(--sidebar-ink);
-  font-size: 0.82rem;
-  transition:
-    transform 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease;
+  min-height: 1.7rem;
+  border: 0;
+  background: transparent;
+  color: var(--pane-ink-soft);
+  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease;
 }
 
-.sidebar-presenter__notes-toggle:hover {
+.sidebar-presenter__notes-toggle {
+  width: 1.7rem;
+  font-size: 0.68rem;
+}
+
+.sidebar-presenter__toggle {
+  position: relative;
+  padding: 0 0.45rem;
+  font-size: 0.65rem;
+}
+
+.sidebar-presenter__toggle::after {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.25rem;
+  left: 0.45rem;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  opacity: 0;
+  transform: scaleX(0.6);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.sidebar-presenter__notes-toggle:hover,
+.sidebar-presenter__toggle:hover {
+  background: var(--pane-sage-soft);
+  color: var(--pane-ink);
   transform: translateY(-1px);
-  background: var(--sidebar-thumb-hover);
+}
+
+.sidebar-presenter__toggle:hover::after,
+.sidebar-presenter__toggle[aria-pressed="true"]::after {
+  opacity: 0.7;
+  transform: scaleX(1);
 }
 
 .sidebar-presenter__notes-body {
   min-height: 0;
   overflow: hidden;
-  margin-top: 0.38rem;
 }
 
 .sidebar-presenter__notes-display {
@@ -1257,75 +1439,79 @@ onBeforeUnmount(() => {
   max-width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 0.62rem 0.7rem;
-  border-radius: 12px;
-  background: var(--sidebar-notes-display-bg);
-  color: var(--sidebar-ink-soft);
-  line-height: 1.7;
+  padding: 0.15rem 0 0.65rem;
+  background: transparent;
+  color: var(--pane-ink-soft);
+  font-family: var(--pane-font-sans);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  scrollbar-color: var(--pane-scrollbar) transparent;
   scrollbar-width: thin;
-  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
 }
 
-.sidebar-presenter__thumbs::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+.sidebar-presenter__notes-display :deep(textarea) {
+  background: transparent;
+  color: var(--pane-ink);
+  font-family: var(--pane-font-sans);
 }
 
+.sidebar-presenter__thumbs::-webkit-scrollbar,
 .sidebar-presenter__canvas-viewport::-webkit-scrollbar,
 .sidebar-presenter__notes-display::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-track,
 .sidebar-presenter__canvas-viewport::-webkit-scrollbar-track,
 .sidebar-presenter__notes-display::-webkit-scrollbar-track {
-  background: var(--sidebar-scrollbar-track);
-  border-radius: 999px;
+  background: transparent;
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-thumb,
 .sidebar-presenter__canvas-viewport::-webkit-scrollbar-thumb,
 .sidebar-presenter__notes-display::-webkit-scrollbar-thumb {
-  border: 1.5px solid transparent;
-  border-radius: 999px;
-  background: var(--sidebar-scrollbar-thumb);
-  background-clip: padding-box;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: var(--pane-scrollbar);
 }
 
 .sidebar-presenter__thumbs::-webkit-scrollbar-thumb:hover,
 .sidebar-presenter__canvas-viewport::-webkit-scrollbar-thumb:hover,
 .sidebar-presenter__notes-display::-webkit-scrollbar-thumb:hover {
-  background: var(--sidebar-scrollbar-thumb-hover);
-  background-clip: padding-box;
+  background: var(--pane-scrollbar-hover);
 }
 
 .sidebar-presenter__progress {
-  height: 4px;
-  margin-top: 0.4rem;
-  margin-bottom: 0.55rem;
-  border-radius: 999px;
-  background: var(--sidebar-progress-track);
-  overflow: hidden;
+  height: 1px;
+  margin: 0.45rem 0 0.7rem;
+  background: var(--pane-line);
 }
 
 .sidebar-presenter__progress-bar {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--sidebar-progress-fill);
-  transition: width 160ms ease;
+  height: 1px;
+  background: var(--pane-sage);
+  transition: width 200ms ease;
 }
 
 @media (max-width: 960px) {
   .sidebar-presenter {
     grid-template-columns: 1fr;
-    grid-template-rows: 190px minmax(0, 1fr);
+    grid-template-rows: 210px minmax(0, 1fr);
   }
 
   .sidebar-presenter__rail-resizer,
   .sidebar-presenter__notes-resizer {
     display: none;
+  }
+
+  .sidebar-presenter__rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--pane-line-strong);
+  }
+
+  .sidebar-presenter__thumbs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 1.15rem;
   }
 
   .sidebar-presenter__thumbs-spacer,
@@ -1334,38 +1520,27 @@ onBeforeUnmount(() => {
     height: auto;
   }
 
-  .sidebar-presenter__rail {
-    border-right: none;
-    border-bottom: 1px solid var(--sidebar-border);
-  }
-
-  .sidebar-presenter__thumbs {
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
   .sidebar-presenter__thumbs-spacer {
     display: flex;
     width: max-content;
     min-width: 100%;
     height: 100%;
     align-items: stretch;
-    gap: 0.75rem;
-    padding: 0.75rem 0 1rem;
+    gap: 0.7rem;
+    padding: 0.55rem 0 0.8rem;
   }
 
   .sidebar-presenter__thumb-item.is-section {
     display: flex;
-    width: 154px;
-    min-width: 154px;
+    width: 132px;
+    min-width: 132px;
     align-items: stretch;
   }
 
   .sidebar-presenter__section {
     height: auto;
-    align-items: center;
-    border-color: var(--sidebar-border);
-    background: var(--sidebar-surface);
+    align-items: flex-start;
+    padding: 0.85rem 0.75rem 0.45rem 0.2rem;
   }
 
   .sidebar-presenter__section-title {
@@ -1373,14 +1548,76 @@ onBeforeUnmount(() => {
   }
 
   .sidebar-presenter__thumb {
+    width: 158px;
+    min-width: 158px;
     height: auto;
-    width: 220px;
-    min-width: 220px;
-    margin-bottom: 0;
+    padding: 0.45rem 0.3rem 0.35rem 0.75rem;
+  }
+
+  .sidebar-presenter__thumb::before {
+    top: 0.45rem;
+    bottom: 0.35rem;
+    left: 0;
   }
 
   .sidebar-presenter__main {
-    padding: 0.56rem;
+    height: auto;
+    padding: 0.65rem 0.75rem 0;
+  }
+
+  .sidebar-presenter__canvas-wrap {
+    margin-top: 0;
+  }
+
+  .sidebar-presenter__notes {
+    height: min(var(--sidebar-notes-height, 7rem), 18vh);
+    margin-top: 0.55rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar-presenter {
+    grid-template-rows: 190px minmax(0, 1fr);
+  }
+
+  .sidebar-presenter__rail-head {
+    min-height: 2rem;
+  }
+
+  .sidebar-presenter__thumbs {
+    padding: 0 0.7rem;
+  }
+
+  .sidebar-presenter__main {
+    padding: 0.5rem 0.5rem 0;
+  }
+
+  .sidebar-presenter__zoom {
+    grid-template-columns: 1.7rem 2.8rem 1.7rem;
+    height: 1.8rem;
+  }
+
+  .sidebar-presenter__canvas-bounds {
+    inset: 2.15rem 0.3rem 0.3rem;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 961px) {
+  .sidebar-presenter__main {
+    padding-top: 0.5rem;
+  }
+
+  .sidebar-presenter__notes {
+    margin-top: 0.45rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-presenter *,
+  .sidebar-presenter *::before,
+  .sidebar-presenter *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 </style>
