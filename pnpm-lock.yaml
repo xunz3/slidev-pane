@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@slidev/theme-default':
+        specifier: ^0.25.0
+        version: 0.25.0
     devDependencies:
       '@slidev/cli':
         specifier: 0.51.0-beta.4
@@ -1375,6 +1379,14 @@ packages:
   '@slidev/rough-notation@0.1.0':
     resolution: {integrity: sha512-a/CbVmjuoO3E4JbUr2HOTsXndbcrdLWOM+ajbSQIY3gmLFzhjeXHGksGcp1NZ08pJjLZyTCxfz1C7v/ltJqycA==}
 
+  '@slidev/theme-default@0.25.0':
+    resolution: {integrity: sha512-iWvthH1Ny+i6gTwRnEeeU+EiqsHC56UdEO45bqLSNmymRAOWkKUJ/M0o7iahLzHSXsiPu71B7C715WxqjXk2hw==}
+    engines: {node: '>=14.0.0', slidev: '>=v0.47.0'}
+
+  '@slidev/types@0.47.5':
+    resolution: {integrity: sha512-X67V4cCgM0Sz50bP8GbVzmiL8DHC2IXvdKcsN7DlxHyf+/T4d9GveeGukwha5Fx3MuYeGZWKag7TFL2ZY4w54A==}
+    engines: {node: '>=18.0.0'}
+
   '@slidev/types@0.51.0-beta.4':
     resolution: {integrity: sha512-ZhGbXwz9oP6CRSWprjbbZ0GrRcW1uXoK6yu2eFWGB5DqqJTVSETnimVgwMqqkrkfJ9jcRVHXTtprAGGdui532A==}
     engines: {node: '>=18.0.0'}
@@ -2194,6 +2206,9 @@ packages:
   clone-regexp@3.0.0:
     resolution: {integrity: sha512-ujdnoq2Kxb8s3ItNBtnYeXdm07FcU0u8ARAT1lQ2YdMwQC+cdiXX8KoqMVuglztILivceTtp4ivqGSmEmhBUJw==}
     engines: {node: '>=12'}
+
+  codemirror-theme-vars@0.1.2:
+    resolution: {integrity: sha512-WTau8X2q58b0SOAY9DO+iQVw8JKVEgyQIqArp2D732tcc+pobbMta3bnVMdQdmgwuvNrOFFr6HoxPRoQOgooFA==}
 
   color-convert@2.0.1:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
@@ -3542,6 +3557,9 @@ packages:
     resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
     engines: {node: '>=14'}
     hasBin: true
+
+  prism-theme-vars@0.2.5:
+    resolution: {integrity: sha512-/D8gBTScYzi9afwE6v3TC1U/1YFZ6k+ly17mtVRdLpGy7E79YjJJWkXFgUDHJ2gDksV/ZnXF7ydJ4TvoDm2z/Q==}
 
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
@@ -5741,6 +5759,14 @@ snapshots:
     dependencies:
       roughjs: 4.6.6
 
+  '@slidev/theme-default@0.25.0':
+    dependencies:
+      '@slidev/types': 0.47.5
+      codemirror-theme-vars: 0.1.2
+      prism-theme-vars: 0.2.5
+
+  '@slidev/types@0.47.5': {}
+
   '@slidev/types@0.51.0-beta.4(@nuxt/kit@3.21.2)(@vue/compiler-sfc@3.5.34)(postcss@8.5.14)(rollup@4.59.0)(typescript@5.6.3)(vite@6.4.1(@types/node@22.19.18)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@antfu/utils': 0.7.10
@@ -7029,6 +7055,8 @@ snapshots:
   clone-regexp@3.0.0:
     dependencies:
       is-regexp: 3.1.0
+
+  codemirror-theme-vars@0.1.2: {}
 
   color-convert@2.0.1:
     dependencies:
@@ -8700,6 +8728,8 @@ snapshots:
       jszip: 3.10.1
 
   prettier@3.8.1: {}
+
+  prism-theme-vars@0.2.5: {}
 
   process-nextick-args@2.0.1: {}
 

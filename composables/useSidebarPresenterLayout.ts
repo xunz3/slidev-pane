@@ -40,7 +40,7 @@ export function getNotesHeightMax() {
 }
 
 export function getDefaultNotesHeight() {
-  return Math.round(clampBetween(getViewportHeight() * 0.095, 96, 136))
+  return Math.round(clampBetween(getViewportHeight() * 0.15, 112, 168))
 }
 
 function normalizeRailWidth(value: number) {

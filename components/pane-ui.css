@@ -1,0 +1,62 @@
+/* Shared presenter chrome. Tokens stay inside Pane and never change a deck's theme. */
+.pane-ui {
+  --pane-bg: #f5f4f2;
+  --pane-surface: #fbfaf8;
+  --pane-raised: #ffffff;
+  --pane-stage: #eeedea;
+  --pane-ink: #292824;
+  --pane-muted: #706e67;
+  --pane-faint: #7f7b73;
+  --pane-line: #e6e3dd;
+  --pane-line-strong: #cec9c0;
+  --pane-accent: #87653e;
+  --pane-accent-soft: #f0ebe5;
+  --pane-accent-line: #ccb99f;
+  --pane-on-accent: #ffffff;
+  --pane-hover: #efede8;
+  --pane-danger: #a4483c;
+  --pane-overlay: rgb(28 26 22 / 26%);
+  --pane-shadow: 0 12px 36px -12px rgb(28 26 22 / 18%), 0 1px 3px rgb(28 26 22 / 4%);
+  --pane-popup-shadow: 0 20px 64px -16px rgb(28 26 22 / 24%), 0 0 0 1px rgb(28 26 22 / 4%);
+  --pane-font: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Noto Sans', sans-serif;
+  --pane-display: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  --pane-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color: var(--pane-ink);
+  font-family: var(--pane-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark .pane-ui {
+  --pane-bg: #191918;
+  --pane-surface: #20201e;
+  --pane-raised: #292824;
+  --pane-stage: #181817;
+  --pane-ink: #e4e2dd;
+  --pane-muted: #a4a199;
+  --pane-faint: #99958c;
+  --pane-line: #30302c;
+  --pane-line-strong: #48463f;
+  --pane-accent: #c8aa82;
+  --pane-accent-soft: #302a23;
+  --pane-accent-line: #69553b;
+  --pane-on-accent: #241d15;
+  --pane-hover: #2b2a26;
+  --pane-danger: #df9b8d;
+  --pane-overlay: rgb(8 8 6 / 60%);
+  --pane-shadow: 0 20px 60px -12px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 5%);
+  --pane-popup-shadow: 0 28px 90px -16px rgb(0 0 0 / 65%), 0 0 0 1px rgb(255 255 255 / 5%);
+}
+
+.pane-key {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 1px solid var(--pane-line-strong);
+  border-radius: 5px;
+  color: var(--pane-muted);
+  font: 10px var(--pane-mono);
+  line-height: 1;
+}

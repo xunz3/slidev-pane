@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 import { useDrawings } from '@slidev/client/composables/useDrawings.ts'
 import { useNav } from '@slidev/client/composables/useNav.ts'
 import { configs } from '@slidev/client/env.ts'
 import { isColorSchemaConfigured, isDark, toggleDark } from '@slidev/client/logic/dark.ts'
-import { activeElement, fullscreen, hasViewerCssFilter, showEditor, showInfoDialog, toggleOverview } from '@slidev/client/state/index.ts'
+import { activeElement, fullscreen, hasViewerCssFilter, showEditor, showGotoDialog, showInfoDialog, toggleOverview } from '@slidev/client/state/index.ts'
 import { downloadPDF } from '@slidev/client/utils.ts'
 import IconButton from '@slidev/client/internals/IconButton.vue'
-import MenuButton from '@slidev/client/internals/MenuButton.vue'
 import Settings from '@slidev/client/internals/Settings.vue'
 import { useSidebarPresenterNav } from '../composables/useSidebarPresenterNav'
 
@@ -32,6 +32,9 @@ const {
 
 const { isFullscreen, toggle: toggleFullscreen } = fullscreen
 const root = ref<HTMLDivElement>()
+const menu = ref<HTMLDivElement>()
+const menuOpen = ref(false)
+onClickOutside(menu, () => menuOpen.value = false)
 
 function onMouseLeave() {
   if (root.value && activeElement.value && root.value.contains(activeElement.value))
@@ -45,35 +48,45 @@ function formatSlideNo(no: number) {
 }
 </script>
 
+
+
+
 <template>
-  <div
-    class="pane-nav-dock"
-    :class="wrapperClass"
-  >
-    <nav
-      ref="root"
-      class="pane-nav"
-      @mouseleave="onMouseLeave"
-    >
-      <IconButton
-        :class="{ disabled: !hasPrev }"
-        :disabled="!hasPrev"
-        :aria-disabled="!hasPrev"
-        title="Go to previous slide"
-        @click="prevSidebar"
-      >
-        <div class="i-carbon:arrow-left" />
-      </IconButton>
-      <IconButton
-        :class="{ disabled: !hasNext }"
-        :disabled="!hasNext"
-        :aria-disabled="!hasNext"
-        title="Go to next slide"
-        @click="nextSidebar"
-      >
-        <div class="i-carbon:arrow-right" />
-      </IconButton>
-      <template v-if="!isEmbedded">
+  <div class="pane-nav-dock" :class="wrapperClass">
+    <nav ref="root" class="pane-nav" aria-label="Presentation controls" @mouseleave="onMouseLeave">
+      <div class="pane-nav__leading"><slot name="leading" /></div>
+      <div class="pane-nav__pagination">
+        <IconButton
+          :class="{ disabled: !hasPrev }"
+          :disabled="!hasPrev"
+          :aria-disabled="!hasPrev"
+          title="Go to previous slide"
+          @click="prevSidebar"
+        >
+          <div class="i-carbon:arrow-left" />
+        </IconButton>
+        <button
+          type="button"
+          class="pane-nav__counter"
+          :aria-label="`Slide ${currentSlideNo} of ${total}. Find a slide`"
+          title="Find a slide (G)"
+          @click="showGotoDialog = true"
+        >
+          <strong>{{ formatSlideNo(currentSlideNo) }}</strong>
+          <span>/</span>
+          <span>{{ formatSlideNo(total) }}</span>
+        </button>
+        <IconButton
+          :class="{ disabled: !hasNext }"
+          :disabled="!hasNext"
+          :aria-disabled="!hasNext"
+          title="Go to next slide"
+          @click="nextSidebar"
+        >
+          <div class="i-carbon:arrow-right" />
+        </IconButton>
+      </div>
+      <div v-if="!isEmbedded" class="pane-nav__tools">
         <IconButton
           :title="isFullscreen ? 'Exit full screen' : 'Enter full screen'"
           :aria-pressed="isFullscreen"
@@ -90,20 +103,20 @@ function formatSlideNo(no: number) {
           @click="drawingEnabled = !drawingEnabled"
         >
           <div class="i-carbon:pen" />
-          <div
-            v-if="drawingEnabled"
-            class="pane-nav__brush"
-            :style="{ background: brush.color }"
-          />
+          <div v-if="drawingEnabled" class="pane-nav__brush" :style="{ background: brush.color }" />
         </IconButton>
-        <MenuButton>
-          <template #button>
-            <IconButton title="More Options">
-              <div class="i-carbon:settings-adjust" />
-              <div v-if="hasViewerCssFilter" w-2 h-2 bg-primary rounded-full absolute top-0.5 right-0.5 />
-            </IconButton>
-          </template>
-          <template #menu>
+        <div ref="menu" class="pane-nav__menu" @keydown.esc.stop="menuOpen = false">
+          <IconButton
+            title="More options"
+            :aria-expanded="menuOpen"
+            aria-controls="pane-options"
+            @click="menuOpen = !menuOpen"
+          >
+            <div class="i-carbon:settings-adjust" />
+            <div v-if="hasViewerCssFilter" w-2 h-2 bg-primary rounded-full absolute top-0.5 right-0.5 />
+          </IconButton>
+          <div v-if="menuOpen" id="pane-options" class="pane-nav__popover">
+            <p class="pane-nav__menu-label">Presentation tools</p>
             <div class="pane-nav__menu-icons" aria-label="Presenter tools">
               <IconButton title="Show slide overview" @click="toggleOverview()">
                 <div class="i-carbon:apps" />
@@ -135,22 +148,13 @@ function formatSlideNo(no: number) {
               <IconButton v-if="__SLIDEV_FEATURE_BROWSER_EXPORTER__" title="Browser exporter" to="/export">
                 <div class="i-carbon:document-pdf" />
               </IconButton>
-              <IconButton
-                v-if="configs.info"
-                title="Show info"
-                @click="showInfoDialog = !showInfoDialog"
-              >
+              <IconButton v-if="configs.info" title="Show info" @click="showInfoDialog = !showInfoDialog">
                 <div class="i-carbon:information" />
               </IconButton>
             </div>
             <Settings />
-          </template>
-        </MenuButton>
-      </template>
-
-      <div class="pane-nav__counter" :aria-label="`Slide ${currentSlideNo} of ${total}`">
-        <strong>{{ formatSlideNo(currentSlideNo) }}</strong>
-        <span>/ {{ formatSlideNo(total) }}</span>
+          </div>
+        </div>
       </div>
     </nav>
   </div>
@@ -160,150 +164,174 @@ function formatSlideNo(no: number) {
 .pane-nav-dock {
   position: relative;
   z-index: 12;
-  flex: 0 0 auto;
-  border-top: 1px solid rgba(32, 41, 37, 0.1);
+  border-top: 1px solid var(--pane-line);
+  background: var(--pane-surface);
 }
-
 .pane-nav {
-  --pane-nav-border: rgba(32, 41, 37, 0.1);
-  --pane-nav-border-strong: rgba(32, 41, 37, 0.19);
-  --pane-nav-bg: #e9ece9;
-  --pane-nav-hover: rgba(111, 137, 128, 0.1);
-  --pane-nav-ink: #34403b;
-  --pane-nav-soft: #7d8883;
-  --pane-nav-sage: #6f8980;
-  --pane-nav-sans: Inter, "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
-  display: flex;
-  width: 100%;
-  min-height: 2.7rem;
-  align-items: center;
-  gap: 0.08rem;
-  padding: 0 0.55rem;
-  border: 0;
-  background: var(--pane-nav-bg);
-  color: var(--pane-nav-ink);
-  font-family: var(--pane-nav-sans);
-}
-
-.pane-nav :deep(.slidev-icon-btn) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8rem;
-  min-width: 1.8rem;
-  height: 1.8rem;
-  border-radius: 0;
-  font-size: 0.8rem;
-  color: inherit;
-  opacity: 0.72;
-  transition: background-color 180ms ease, opacity 180ms ease, color 180ms ease, transform 180ms ease;
-}
-
-.pane-nav :deep(.slidev-icon-btn:hover) {
-  background: var(--pane-nav-hover);
-  opacity: 1;
-  transform: translateY(-1px);
-}
-
-.pane-nav :deep(.slidev-icon-btn:focus-visible) {
-  outline: 1px solid var(--pane-nav-sage);
-  outline-offset: -1px;
-}
-
-.pane-nav :deep(.slidev-icon-btn.disabled) {
-  opacity: 0.32;
-}
-
-.pane-nav__menu-icons {
   display: grid;
-  grid-template-columns: repeat(5, 1.9rem);
-  gap: 0.15rem;
-  padding: 0.4rem;
-  border-bottom: 1px solid var(--pane-nav-border);
+  min-height: 48px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 0 22px;
+  color: var(--pane-muted);
+  font-family: var(--pane-font);
 }
-
-.pane-nav :deep(.flex.relative > .bg-main.text-main) {
-  border-color: var(--pane-nav-border-strong) !important;
-  border-radius: 0 !important;
-  background: var(--pane-nav-bg) !important;
-  box-shadow: none !important;
+.pane-nav__leading {
+  display: flex;
+  align-items: center;
 }
-
-.pane-nav__menu-icons :deep(.slidev-icon-btn) {
+.pane-nav__pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pane-nav__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.pane-nav :deep(.slidev-icon-btn) {
   position: relative;
   display: inline-flex;
-  width: 1.9rem;
-  min-width: 1.9rem;
-  height: 1.9rem;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
   align-items: center;
   justify-content: center;
-  border-radius: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
   color: inherit;
-  font-size: 0.86rem;
+  font-size: 16px;
+  opacity: 1;
+  transition:
+    background 160ms,
+    color 160ms;
 }
-
-.pane-nav__menu-icons :deep(.slidev-icon-btn:hover) {
-  background: var(--pane-nav-hover);
+.pane-nav :deep(.slidev-icon-btn:hover) {
+  background: var(--pane-hover);
+  color: var(--pane-ink);
 }
-
-.pane-nav__brush {
-  position: absolute;
-  right: 0.35rem;
-  bottom: 0.25rem;
-  left: 0.35rem;
-  height: 1px;
+.pane-nav :deep(.slidev-icon-btn:focus-visible),
+.pane-nav__counter:focus-visible {
+  outline: 2px solid var(--pane-accent);
+  outline-offset: 2px;
 }
-
+.pane-nav :deep(.slidev-icon-btn.disabled) {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.pane-nav :deep(.slidev-icon-btn[aria-pressed='true']),
+.pane-nav :deep(.slidev-icon-btn[aria-expanded='true']) {
+  background: var(--pane-accent-soft);
+  color: var(--pane-accent);
+}
+.pane-nav__pagination :deep(.slidev-icon-btn) {
+  font-size: 14px;
+}
 .pane-nav__counter {
   display: flex;
-  margin-left: auto;
+  height: 30px;
   align-items: center;
-  gap: 0.3rem;
-  height: 1.8rem;
-  padding-left: 0.45rem;
-  color: var(--pane-nav-soft);
-  font-size: 0.56rem;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pane-faint);
+  font: 11px var(--pane-mono);
+  cursor: pointer;
 }
-
+.pane-nav__counter:hover {
+  background: var(--pane-hover);
+}
 .pane-nav__counter strong {
-  color: var(--pane-nav-ink);
-  font-size: 0.68rem;
+  color: var(--pane-ink);
   font-weight: 600;
 }
-
-:global(html.dark .pane-nav) {
-  --pane-nav-border: rgba(232, 236, 233, 0.1);
-  --pane-nav-border-strong: rgba(232, 236, 233, 0.19);
-  --pane-nav-bg: #171e1c;
-  --pane-nav-hover: rgba(146, 171, 162, 0.1);
-  --pane-nav-ink: #e3e8e5;
-  --pane-nav-soft: #9ca7a1;
-  --pane-nav-sage: #92aba2;
+.pane-nav__menu {
+  position: relative;
 }
-
-:global(html.dark .pane-nav-dock) {
-  border-top-color: rgba(232, 236, 233, 0.1);
+.pane-nav__popover {
+  position: absolute;
+  right: 0;
+  bottom: 42px;
+  width: min(300px, calc(100vw - 28px));
+  max-height: calc(100dvh - 90px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--pane-line-strong) transparent;
+  scrollbar-width: thin;
+  padding: 8px;
+  border: 1px solid var(--pane-line);
+  border-radius: 12px;
+  background: var(--pane-raised);
+  color: var(--pane-ink);
+  box-shadow: var(--pane-popup-shadow);
 }
-
-:global(html.dark .pane-nav__menu-icons) {
-  border-bottom-color: rgba(232, 236, 233, 0.1);
+.pane-nav__menu-label {
+  margin: 5px 8px 8px;
+  color: var(--pane-muted);
+  font-size: 11px;
+  font-weight: 600;
 }
-
+.pane-nav__menu-icons {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--pane-line);
+}
+.pane-nav__menu-icons :deep(.slidev-icon-btn) {
+  width: 36px;
+  height: 34px;
+}
+.pane-nav__popover :deep(input),
+.pane-nav__popover :deep(select) {
+  border-color: var(--pane-line-strong);
+  accent-color: var(--pane-accent);
+}
+.pane-nav__popover :deep(.text-primary) {
+  color: var(--pane-accent);
+}
+.pane-nav__brush {
+  position: absolute;
+  right: 9px;
+  bottom: 4px;
+  left: 9px;
+  height: 2px;
+  border-radius: 2px;
+}
 @media (max-width: 640px) {
   .pane-nav {
-    min-height: 2.4rem;
-    padding: 0 0.4rem;
+    min-height: 44px;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .pane-nav :deep(.slidev-icon-btn) {
+    width: 24px;
+    min-width: 24px;
+    height: 28px;
+  }
+  .pane-nav__tools {
+    gap: 3px;
+  }
+  .pane-nav__pagination {
+    gap: 2px;
+  }
+  .pane-nav__counter {
+    gap: 4px;
+    padding: 0 4px;
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .pane-nav-dock,
   .pane-nav :deep(.slidev-icon-btn) {
-    transition-duration: 0.01ms;
+    transition: none;
   }
 }
 </style>
